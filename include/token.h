@@ -3,7 +3,6 @@
 
 #include <string>
 
-using namespace std;
 
 enum token_type {
     // Keywords
@@ -17,14 +16,20 @@ enum token_type {
     IDENTIFIER, STRING,
     ENDOFFILE
 };
+// TODO Check this struct 
+struct liter {
+    bool boolean;
+    double val;
+    std::string str;
+};
 
 class token {
     public:
-        token_type token;
-        string lexeme;
+        token_type type;
+        std::string lexeme;
         liter lit;
         int line;
-        token(token_type type, string lexeme, liter lit, int line);
-        string to_string() const;
+        token(token_type type, const std::string& lexeme,const liter& lit, int line);
+        std::string to_string() const;
 };
-#endif TOKEN_H
+#endif 
