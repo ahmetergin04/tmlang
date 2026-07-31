@@ -68,7 +68,9 @@ void scanner::scan_token() {
                 this->identifier();
                 }
                 else{
-            error(this-> line, "Unexpected character: "+c); 
+             std::string temp = "Unexpected character: "+c;
+            error(this-> line, temp ); 
+
             }
             break;
     }

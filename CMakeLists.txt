@@ -11,4 +11,10 @@ target_include_directories ( ${PROJECT_NAME} PRIVATE
 
 enable_testing()
 
-add_test ( NAME run_test COMMAND tmlang ${CMAKE_CURRENT_SOURCE_DIR}/tests/test.tm )
+file(GLOB  TEST_FILES "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.tm" )
+
+foreach(TEST_FILE ${TEST_FILES} )
+    get_filename_component(TEST_NAME ${TEST_FILE} NAME_WE)
+    add_test ( NAME "test_${TEST_NAME}" COMMAND tmlang ${TEST_FILE})
+endforeach()
+
