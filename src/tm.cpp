@@ -5,14 +5,15 @@
 
 #include "scanner.h"
 #include "error.h"
+#include "token.h"
 
 using namespace std;
 
 void run(string& source){
-    Scanner scanner(source);
-    vector<Token> tokens = scanner.scan_tokens();
-    for(const Token& t : tokens){
-        cout << t;
+    scanner  scanner(source);
+    vector<token> tokens = scanner.scan_tokens();
+    for(const token& t : tokens){
+        cout << t.to_string();
     }
 }
 
@@ -31,7 +32,6 @@ void run_file(const string& path) {
 void run_prompt() {cout <<"run_prompt";}
 
 int main(int argc, char *argv[]) {
-    cout << argc; 
     if(argc > 2) { cout << "Usage: tm [script]\n";}
     else if (argc == 2 ) { run_file(argv[1]);}
     else { run_prompt();}

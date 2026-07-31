@@ -19,12 +19,12 @@ std::string token::to_string() const {
         case IN : s = "IN"; break;
         case AND : s = "AND"; break;
         case OR : s = "OR"; break;
-        case H_YES : s = "H_YES"; break;
-        case H_NO : s = "H_NO"; break;
+        case HALT_YES : s = "HALT_YES"; break;
+        case HALT_NO : s = "HALT_NO"; break;
         case UNDERSCORE : s = "UNDERSCORE"; break;
         case LEFT_ARROW : s = "LEFT_ARROW"; break;
         case RIGHT_ARROW : s = "RIGHT_ARROW"; break;
-        case COMPUTATION : s = "COMPUTATION"; break;
+        case COMPUTES : s = "COMPUTES"; break;
         case BLANK : s = "BLANK"; break;
         case EQUAL : s = "EQUAL"; break;
         case LEFT_BRACE : s = "LEFT_BRACE"; break;
@@ -36,7 +36,6 @@ std::string token::to_string() const {
         case UNION : s = "UNION"; break;
         case START : s = "START"; break;
         case BACK_SLASH : s = "BACK_SLASH"; break;
-        case SLASH : s = "SLASH"; break;
         case HALT : s = "HALT"; break;
         case SEMICOLON : s = "SEMICOLON"; break;
         case BLIP : s = "BLIP"; break;
@@ -44,6 +43,6 @@ std::string token::to_string() const {
         case IDENTIFIER : s = "IDENTIFIER(" + this->lexeme+ ")";break;
         case STRING : s = "STRING(" + this->lexeme+ ")"; break;
     }
-    s = s + "   line: " + std::to_string(this->line);
+    s = s + "\n"; 
     return s;
 }
