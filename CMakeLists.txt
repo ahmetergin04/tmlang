@@ -18,3 +18,5 @@ foreach(TEST_FILE ${TEST_FILES} )
     add_test ( NAME "test_${TEST_NAME}" COMMAND tmlang ${TEST_FILE})
 endforeach()
 
+
+
