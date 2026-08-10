@@ -29,7 +29,18 @@ void run_file(const string& path) {
     if(had_error) exit(65);
 }
 
-void run_prompt() {cout <<"run_prompt";}
+void run_prompt() {
+    for(;;){
+        std::cout << "--> ";
+        std::string prompt;
+        if(std::getline(std::cin, prompt)){
+            run(prompt);
+        }
+        else{break;}
+
+        had_error = false;
+    }
+}
 
 int main(int argc, char *argv[]) {
     if(argc > 2) { cout << "Usage: tm [script]\n";}

@@ -17,11 +17,11 @@ enum token_type {
     IDENTIFIER, STRING, NUMBER,
     ENDOFFILE
 };
-// TODO Check this struct 
+// TODO Check this struct
 struct liter {
-    bool boolean = false;
-    double val = 0.0;
-    std::string str = "";
+    bool boolean;
+    double val;
+    std::string str;
     liter() = default;
     liter(bool b) : boolean(b) {}
     liter(double d) : val(d) {}
