@@ -13,7 +13,7 @@ transition_func d(Q,a) = {
     ("q","b","s", ->)
 };
 
-TM M (Q,a,d,"s", {"halt"};
+TM M (Q,a,d,"s", {"halt"});
 
 tape t(a) = { "#ababababbbbaa"};
 
