@@ -2,6 +2,8 @@
 #include "parser.h"
 #include "token.h"
 
+//helpers
+
 const token& parser::peek() {
     return tokens[current];
 }
