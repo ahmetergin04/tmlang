@@ -47,6 +47,8 @@ void scanner::scan_token() {
         case '*': add_token(KLEENE_CLOSURE); break;
         case '~': add_token(BLIP); break;
         case '!': add_token(match('=') ? BANG_EQUAL : BANG); break;
+        case ':': if(match(':')) { 
+                          add_token(SCOPE_RESOLUTION_OPERATOR); break; }
         case '=': add_token(match('=') ? EQUAL_EQUAL : EQUAL); break;
         case '|': add_token(match('-') ? COMPUTES : OR); break;
         case '/':  if(match('/')) {
@@ -55,8 +57,8 @@ void scanner::scan_token() {
 // TODO: /**/ multi-line comment else if(match('*')) 
         case '&': add_token(AND); break;
         case '\\': add_token(match('/') ? UNION : DIFFERENCE); break;
-                           case '-': if(match('>')) { add_token(RIGHT_ARROW); break;}
-                           case '<': if(match('-')) { add_token(LEFT_ARROW); break;}
+        case '-': if(match('>')) { add_token(RIGHT_ARROW); break;}
+        case '<': if(match('-')) { add_token(LEFT_ARROW); break;}
         case ' ': 
         case '\r': 
         case '\t':
