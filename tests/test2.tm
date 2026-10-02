@@ -10,5 +10,5 @@ CTM M ( binary) = {
     ( >, _, R . A ),
     ( A, head == "0" , "1" . R. A . A ),
     ( A, head == "1" , "0" . R . A),
-    ( A, head == # , std;;left(#) . h ) // go left until #
+    ( A, head == # , std::left(#) . h ) // go left until #
 };
