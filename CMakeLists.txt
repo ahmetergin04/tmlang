@@ -4,7 +4,7 @@ project(tmlang)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-set( SOURCES src/tm.cpp src/scanner.cpp src/token.cpp src/error.cpp )
+set( SOURCES src/tm.cpp src/scanner.cpp src/token.cpp src/error.cpp src/parser.cpp )
 
 add_executable(${PROJECT_NAME} ${SOURCES})
 

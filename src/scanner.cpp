@@ -84,16 +84,19 @@ void scanner::add_token(token_type type, liter lit) {
     std::string text = this-> source.substr(this->start, this->current - this->start);
     this->tokens.emplace_back(type, text, lit, this->line);
 }
+
 bool scanner::match(const char expected) {
     if(this->at_end()) return false;
     if(this->source[current] != expected) return false;
     current++;
     return true; 
 }
+
 char scanner::peek() {
     if(this->at_end()) return '\0';
     return this->source[this->current];
 }
+
 void scanner::scstring() {
     while(this->peek() != '"' && !this->at_end()) {
         if(this->peek() ==  '\n') this->line++;
@@ -107,7 +110,9 @@ void scanner::scstring() {
     std::string value = this->source.substr(this->start+1, this->current - this->start -2);
     add_token(STRING, value);
 }
+
 bool scanner::is_digit(const char c) const { return c >= '0' && c<= '9'; }
+
 /*  TODO: consider adding NUMBER to the grammar
 void scanner::numbr() { 
     while( is_digit( peek() )  advance();
@@ -117,6 +122,7 @@ void scanner::numbr() {
     }
     add_token(NUMBER, 
 */
+
 bool scanner::is_alpha(const char c) const { 
     return (c >= 'a' && c<= 'z') || (c >= 'A' && c<= 'Z') || c == '_';
 }
