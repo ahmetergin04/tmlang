@@ -1,6 +1,5 @@
 #ifndef VISITOR_H
 #define VISITOR_H
-#include <memory>
 
 class Expr;
 class Alphabet;
