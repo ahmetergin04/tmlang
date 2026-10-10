@@ -24,13 +24,13 @@ target_include_directories(${PROJECT_NAME} PRIVATE
 )
 
 # Prebuilt libraries to link
-file(GLOB PREBUILT_LIBS CONFIGURE_DEPENDS
-)
+# file(GLOB PREBUILT_LIBS CONFIGURE_DEPENDS
+# )
 target_link_libraries(${PROJECT_NAME} PRIVATE ${PREBUILT_LIBS})
 
 # Precompiled dynamic library dlls
-file(GLOB ALL_DLLS CONFIGURE_DEPENDS
-)
+# file(GLOB ALL_DLLS CONFIGURE_DEPENDS
+# )
 
 if(ALL_DLLS)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
