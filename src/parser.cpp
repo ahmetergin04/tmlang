@@ -41,3 +41,24 @@ const token& parser::consume(token_type type, const std::string& message) {
 bool parser::isAtEnd() { 
     return peek().type == ENDOFFILE; 
 }
+
+void parser::synchronize() {
+    advance();
+    while (!isAtEnd()) {
+        if (previous().type == SEMICOLON) return;
+        switch (peek().type) {
+            case ALPHABET:
+            case STATE_SET:
+            case TRANS_FUN:
+            case TM:
+            case CTM:
+            case TAPE:
+            case RUN:
+                return;
+            default:
+                break;
+        }
+        advance();
+    }
+}
+

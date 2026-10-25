@@ -6,6 +6,7 @@
 #include "scanner.h"
 #include "error.h"
 #include "token.h"
+#include "parser.h"
 
 using namespace std;
 
