@@ -4,17 +4,18 @@ alphabet a = { "a", "b"};
 
 state_set Q = { "s", "q" };
 
-transition_func d(Q,a) = { 
-    ("s", "#", "s", ->),
-    ("s","a","q", ->),
-    ("s","b","s", ->),
-    ("q","#","s", ->),
-    ("q","a","halt","a"),
-    ("q","b","s", ->)
+transition_func d(Q,a) = {
+    ("s", ~,   "s",  ~,   ->),
+    ("s", #,   "s",  #,   ->),
+    ("s", "a", "q",  "a", ->),
+    ("s", "b", "s",  "b", ->),
+    ("q", #,   "s",  #,   ->),
+    ("q", "a", halt, "a", <>),
+    ("q", "b", "s",  "b", ->)
 };
 
-TM M (Q,a,d,"s", {"halt"});
+tm M (Q,a,"s",d, {halt});
 
-tape t(a) = { "#ababababbbbaa"};
+tape t(a) = { ~, "a", "b", "a", "b", "a", "b", "a", "b", "b", "b", "b", "a", "a" };
 
 run(M, t);
