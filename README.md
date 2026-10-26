@@ -3,7 +3,7 @@
 A programming language for describing **Turing machines**, with an interpreter and a debugger.
 
 ## The language at a glance
-
+|Declaration | What it defines |
 |---|---|
 | `alphabet` | The tape symbols a machine may use |
 | `state_set` | A set of states; sets can be combined with `\/` (union) and `\` (difference) |
