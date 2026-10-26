@@ -54,7 +54,24 @@ void scanner::scan_token() {
         case '/':  if(match('/')) {
                         while(this->peek() != '\n' && ! this->at_end()) 
                            {this->advance();} break;}
-// TODO: /**/ multi-line comment else if(match('*')) 
+                  else if (match('*')) {
+                        bool closed = false;
+                        while (!this->at_end()) {
+                            if (this->peek() == '*') {
+                                this->advance();
+                                if (this->peek() == '/') {
+                                    this->advance();
+                                    closed = true;
+                                    break;
+                                }
+                            } else {
+                                this->advance();
+                            }
+                        }
+                        if(!closed) 
+                          {error(this->line, "Unterminated comment."); return;}
+                        break;
+                  }
         case '&': add_token(AND); break;
         case '\\': add_token(match('/') ? UNION : DIFFERENCE); break;
         case '-': if(match('>')) { add_token(RIGHT_ARROW); break;}
