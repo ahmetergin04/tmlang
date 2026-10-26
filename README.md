@@ -1,6 +1,35 @@
-cmake -B build
-cmake --build build
-ctest --test-dir build -V --output-on-failure
+# tmlang
 
-bende ctest hata verdi config olmadan calismiyor diye assagidakini kullaninca oldu.
-ctest --test-dir build -C Debug -V --output-on-failure
+A programming language for describing **Turing machines**, with an interpreter and a debugger.
+
+## The language at a glance
+
+|---|---|
+| `alphabet` | The tape symbols a machine may use |
+| `state_set` | A set of states; sets can be combined with `\/` (union) and `\` (difference) |
+| `transition_func` | The transition rules |
+| `tm` | A machine: states, alphabet, start state, transition function, halting states |
+| `tape` | The initial tape contents |
+| `ctm` | A composite machine |
+| `run` | Runs a machine on a tape |
+
+
+## Building
+
+ **CMake 3.16 or newer** and a **C++20 compiler**.
+
+### Linux
+
+```sh
+./build.sh 
+```
+
+### Windows
+
+On Windows use `build.bat`. 
+
+## Usage
+
+```sh
+tmlang [script]
+```
