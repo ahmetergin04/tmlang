@@ -15,19 +15,20 @@ each one can be built and tested before the next.
 What is already there is the book's helper set (`peek`, `previous`, `advance`,
 `check`, `match`, `consume`, `isAtEnd`). Before building on it:
 
-- [ ] `consume` does `throw error;`, which throws a pointer to the `error`
+- [x] `consume` does `throw error;`, which throws a pointer to the `error`
       function. It should be `throw Perror(peek(), message);`
       (book: `throw error(peek(), message);`).
-- [ ] Add a constructor: `explicit parser(std::vector<token> tokens);`
+- [x] Add a constructor: `explicit parser(std::vector<token> tokens);`
       and make `tokens` / `current` private.
-- [ ] Make `Perror` report *where* the error is, like the book's
+- [x] Make `Perror` report *where* the error is, like the book's
       `Lox.error(Token, String)`: at end → `" at end"`, otherwise
       `" at '" + lexeme + "'"`. `report(line, where, message)` already exists
       in `error.h`.
-- [ ] Add `void synchronize();` (book 6.3.3). Skip tokens until just after a
+- [x] Add `void synchronize();` (book 6.3.3). Skip tokens until just after a
       `SEMICOLON`, or until the next token is a declaration keyword:
       `ALPHABET, STATE_SET, TRANS_FUN, TM, CTM, TAPE, RUN`.
-- [ ] Add the public entry point: `std::vector<std::unique_ptr<Stmt>> parse();`
+      (See Step 3 for a fix to the book's version.)
+- [x] Add the public entry point: `std::vector<std::unique_ptr<Stmt>> parse();`
 
 ---
 
@@ -330,9 +331,11 @@ Run
 ## Step 2 — AST printer
 **Book:** ch. 5.4 *A (Not Very) Pretty Printer*
 
-- [ ] Write `class ast_printer : public Visitor` that prints the tree in a
+- [x] Write `class ast_printer : public Visitor` that prints the tree in a
       Lisp-like form, e.g. `(alphabet numbers {"1" "2"})`,
       `(or (== head "1") (in head numbers_sub))`.
+      Done in `include/ast_printer.h` / `src/ast_printer.cpp`. The expected
+      output for every node is in `tests/test_AstPrinter.tm`.
 - [ ] Build a few nodes by hand in `main` and print them, before the parser
       exists — this tests Step 1 on its own (the book does exactly this in
       5.4).
@@ -348,11 +351,111 @@ parse()        → while (!isAtEnd()) add declaration()
 declaration()  → try { switch on keyword → *_def() } catch (ParseError) { synchronize(); return nullptr; }
 ```
 
-- [ ] `parse()` collects statements and skips `nullptr`s.
-- [ ] `declaration()` uses `match(...)` on the keyword and calls the matching
+### Why this step is needed
+
+A `.tm` program is a flat list of declarations (`alphabet`, `state_set`,
+`transition_func`, `tm`, `ctm`, `tape`, `run`), and each one starts with its
+own keyword. Steps 4–5 write one function per declaration, but something has
+to decide *which* of them to call, and something has to keep going until the
+whole file is read. That is this step. It is the top of the recursive descent:
+the grammar's `program → declaration* EOF` rule.
+
+It is also the place where **error recovery** lives. Without it, the first
+syntax error would throw an exception out of the parser and stop everything,
+so the user would see only one error per run.
+
+### The job of each function
+
+**`parse()`**: the public entry point. It loops until `ENDOFFILE` and calls
+`declaration()` once per declaration. A declaration that failed comes back
+as `nullptr`; `parse()` skips it, so the returned vector holds only valid
+trees. The later passes (printer, resolver) never see a half-built node.
+
+**`declaration()`**: the dispatcher. It looks at one keyword with `match(...)`
+and calls the matching function (`ALPHABET` → `alphabet_declaration()`, ...).
+One token is enough to decide, because every declaration starts with a
+different keyword. Anything else → `throw Perror(peek(), "Expect declaration.")`.
+It also holds the `try/catch`: every `ParseError` thrown anywhere below it
+ends up here, gets turned into `synchronize()` + `return nullptr`, and does
+not reach `parse()`.
+
+**`synchronize()`**: the recovery (book 6.3.3). After an error the parser is
+somewhere in the middle of a broken declaration. `synchronize()` throws away
+tokens until a point where it is safe to start again:
+- just after a `;` (the broken declaration has ended), or
+- in front of a declaration keyword (a new declaration starts).
+
+The error has already been reported by `Perror` at that point;
+`synchronize()` only decides where parsing continues. The result is one clear
+error per broken declaration, while every correct declaration around it is
+still parsed.
+
+### The missing `;` fix (differs from the book)
+
+The book's `synchronize()` always calls `advance()` first. That loses a
+declaration after a missing `;`:
+
+```
+alphabet a = {"a"}      // missing ;
+tm M(Q, a, "s", d, {halt});
+```
+
+1. `consume(SEMICOLON, ...)` sees `tm` and reports `Error at 'tm': Expect ';' ...`.
+2. `synchronize()` calls `advance()` and skips `tm`.
+3. It then skips `M ( Q , ...` until the `;` at the end of line 2.
+4. The valid `tm M` declaration is gone, and a later pass would also report a
+   confusing "M is not declared".
+
+The fix is to skip the first token only if it is *not* a declaration keyword:
+
+```cpp
+bool parser::is_declaration_start();   // peek() is ALPHABET, STATE_SET, TRANS_FUN, TM, CTM, TAPE or RUN
+
+void parser::synchronize() {
+    if (!is_declaration_start()) advance();
+    while (!isAtEnd()) {
+        if (previous().type == SEMICOLON) return;
+        if (is_declaration_start()) return;
+        advance();
+    }
+}
+```
+
+#### Why the `is_declaration_start()` helper is needed
+
+Its job is to answer one question: *is the parser standing on the start of a
+new declaration?* That means: is `peek()` one of the seven declaration keywords?
+
+`synchronize()` now has to ask this question in **two places**:
+
+1. **Before the first `advance()`**: "Am I already on a keyword? If so, don't
+   skip it." This is the missing `;` fix.
+2. **Inside the loop**: "Did I reach the next declaration? If so, stop."
+   The book's version already asked this one.
+
+In the book's version the question was asked only once, so the keyword
+`switch` could sit inline in the loop. With two places, writing the same
+seven-case `switch` twice would mean that adding a new declaration keyword
+later requires changing both copies, and if one is forgotten the two checks
+disagree. The helper keeps the list of keywords in **one place**.
+
+It also makes `synchronize()` read like its description: "skip unless on a
+declaration start; stop after `;` or at a declaration start."
+
+This always terminates: a stray token at the top level is not a keyword, so it
+is always skipped. An error *on* a keyword can only happen inside a
+declaration, and the next `declaration()` call then consumes that keyword.
+
+### Checklist
+
+- [x] `parse()` collects statements and skips `nullptr`s.
+- [x] `declaration()` uses `match(...)` on the keyword and calls the matching
       function below. Anything else → `throw Perror(peek(), "Expect declaration.")`.
+- [x] `synchronize()` does not skip a declaration keyword it is already on
+      (missing `;` fix above).
 - [ ] Every declaration function ends with
-      `consume(SEMICOLON, "Expect ';' after ... declaration.")`.
+      `consume(SEMICOLON, "Expect ';' after ... declaration.")` (done as part
+      of Step 5).
 
 ---
 
@@ -371,6 +474,131 @@ These are reused by several declarations. Write them first:
 
 `symbol()`, `move()` and `next_state()` all follow the same pattern:
 `if (match({...})) return previous(); throw Perror(peek(), "Expect ...");`
+
+### Why these helpers are needed
+
+Several grammar pieces appear in more than one declaration. For example, "a
+name or a `{...}` set" appears in `state_set`, `transition_func`, `tm`, `tape`,
+`ctm` and in `head in ...`. Without helpers, each declaration function would
+parse that piece again with its own copy of the code and its own error
+message. With helpers:
+
+- each grammar rule is parsed in **one place**, so a fix or a grammar change
+  is made once;
+- the Step 5 functions become short lists of `consume(...)` and helper calls
+  that read like the grammar rule they implement;
+- every declaration reports the **same error message** for the same mistake.
+
+They are written first because every Step 5 function depends on them.
+
+All helpers follow the parser's usual contract: on success they **consume**
+the tokens they matched and return the result; on failure they
+`throw Perror(peek(), ...)` without consuming anything, and `declaration()`
+catches the exception and recovers.
+
+### `string_set()`
+
+**Grammar:** `"{" STRING ( "," STRING )* "}"` (`alphabet` and `state_set` in
+the grammar file; the two rules are identical.)
+
+**Job:** parses a set written out in braces and returns a `Set_Literal` with
+one `token` per element. At least one element is required: `{}` is an error.
+
+**Used by:** `alphabet_def` directly, and every other set through
+`set_or_ref()`.
+
+```cpp
+std::unique_ptr<expr> parser::string_set() {
+    consume(LEFT_BRACE, "Expect '{' to start a set.");
+    std::vector<token> items;
+    do {
+        items.push_back(consume(STRING, "Expect a string in set."));
+    } while (match({COMMA}));
+    consume(RIGHT_BRACE, "Expect '}' after set.");
+    return std::make_unique<Set_Literal>(std::move(items));
+}
+```
+
+`{"a", }` fails at `}` ("Expect a string in set."); `{"a" "b"}` fails at
+`"b"` ("Expect '}' after set.").
+
+### `set_or_ref()`
+
+**Grammar:** `IDENTIFIER | string_set` (`state_set_term` in the grammar file)
+
+**Job:** wherever the language accepts a set, it accepts either the **name**
+of a set declared earlier or a set **literal**. This helper makes that choice
+with one token of lookahead:
+- `IDENTIFIER` → `Set_Ref(name)`
+- `{` → `string_set()` → `Set_Literal`
+- anything else → error "Expect a set name or '{'."
+
+**Used by:** each term of `state_set_expr` (between `\/` and `\`), the two
+parameters of `transition_func`, the 1st and 2nd arguments of `tm`, the
+parameter of `tape`, the parameter of `ctm` (which also allows `_`, checked
+before calling this), and `head in ...` in conditions.
+
+It does **not** check whether the name exists or what kind of thing it
+names; that is the resolver's job (see the end of this file).
+
+### `symbol()`
+
+**Grammar:** `STRING | "#" | "~"`; tokens `STRING`, `BLANK`, `BLIP`
+
+**Job:** parses one tape symbol: a string from an alphabet, the blank `#`, or
+the left-end marker `~`. Returns the token itself.
+
+**Used by:** the read and write symbols of a `transition`, the right side of
+`head == ...` / `head != ...`, and the atoms of `next_tm` (e.g. the `"1"` in
+`"1".R.A` means "write 1").
+
+It does not check *where* `~` may appear (a transition that reads `~` must
+write `~` and move `->`); that is a resolver rule too.
+
+> Tape cells are **not** symbols: `tape_cell ::= STRING | "#"`, and `~` is
+> only allowed as the first cell. `tape_def` checks its cells itself and does
+> not call `symbol()`.
+
+### `move()`
+
+**Grammar:** `"->" | "<-" | "<>"`; tokens `RIGHT_ARROW`, `LEFT_ARROW`, `STAY`
+
+**Job:** parses the head movement at the end of a transition. Returns the
+token. The direction must always be written; there is no default.
+
+**Used by:** `transition` only (both forms). It is still a helper because the
+two transition forms both end with it.
+
+> Naming: a member function called `move` hides `std::move` for unqualified
+> calls inside the parser. Always write `std::move(...)` in full in
+> `parser.cpp` (or name the helper `direction()`).
+
+### `next_state()`
+
+**Grammar:** `STRING | halt_state`, where `halt_state ::= "halt" | "halt_yes" | "halt_no"`
+
+**Job:** parses the state a transition goes to: a normal state name (a
+string) or one of the three halt states. Returns the token.
+
+**Used by:** `transition` only (both forms).
+
+Which halt states a machine is allowed to enter depends on its
+`final_state` (`{halt}` or `{halt_yes, halt_no}`). The parser accepts all
+three here; the resolver checks it.
+
+> Optional: a separate `halt_state()` helper (`match({HALT, HALT_YES, HALT_NO})`)
+> can be shared by `next_state()` and the `next_tm` atoms in Step 5.6, which
+> also accept a halt state.
+
+### Checklist
+
+- [x] `string_set()`
+- [x] `set_or_ref()`
+- [x] `symbol()`
+- [x] `move()`, implemented as `direction()` (see the naming note above)
+- [x] `next_state()`
+- [x] `halt_state()` (the optional shared helper)
+- [x] Declare all of them in the `private:` section of `parser.h`.
 
 ---
 

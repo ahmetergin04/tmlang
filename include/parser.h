@@ -9,6 +9,7 @@
 #include "error.h"
 #include "token.h"
 #include "expr.h"
+#include "stmt.h"
 
 class parser{
 private:
@@ -20,7 +21,8 @@ private:
     }; 
 
     ParseError Perror(token token, std::string message){
-        error(token.line, message);
+        report(token.line, token.type == ENDOFFILE ? " at end" : " at '" + token.lexeme + "'", message);
+  
         return ParseError(message);
     }
 
@@ -32,7 +34,17 @@ private:
     bool match(std::initializer_list<token_type> types);
     const token& consume(token_type type, const std::string& message);
 
+    bool is_declaration_start();
     void synchronize();
+    std::unique_ptr<stmt> declaration();
+
+    
+    std::unique_ptr<expr> string_set();
+    std::unique_ptr<expr> set_or_ref();
+    token symbol();
+    token direction(); 
+    token halt_state();
+    token next_state();
 public:
     explicit parser(std::vector<token> tokens) : tokens(std::move(tokens)) {}
     std::vector<std::unique_ptr<stmt>> parse();
