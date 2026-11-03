@@ -151,20 +151,15 @@ need `accept`; the statement that owns them can be visited instead:
 
 | Struct | Fields | Grammar rule |
 |---|---|---|
-| `Transition` | `token state, read, next, write, move` | both `transition` forms |
+| `Transition` | `token state, read, next, write, move` | `transition` |
 | `Final_state` | `std::vector<token> halts` (1 or 2 tokens) | `final_state` |
 | `Ctm_row` | `token label` (IDENTIFIER or `>`), `std::unique_ptr<Expr> condition`, `std::vector<token> next_tm` | `ctm_row`, `next_tm` |
 
-> Both transition forms produce the same `Transition` struct; the parser
-> erases the difference. The rest of the compiler never needs to know which
-> form was written.
-
 #### Examples of the data structs
 
-**`Transition`** — both forms give the same struct.
+**`Transition`**
 ```
-("C", "2", "B", "9", ->)
-("C", "2") |- ("B", "9", ->)
+("C", "2") |-- ("B", "9", ->)
 
 Transition
 ├─ state: "C"
@@ -260,8 +255,8 @@ State_set_def
 **`Transition_fun`**
 ```
 transition_func d1(Q1, numbers) = {
-    ("A", "1", "B", "2", ->),
-    ("C", "2") |- ("B", "9", ->)
+    ("A", "1") |-- ("B", "2", ->),
+    ("C", "2") |-- ("B", "9", ->)
 };
 
 Transition_fun
@@ -287,12 +282,12 @@ Turing_machine
 
 **`Tape_def`**
 ```
-tape t1(numbers) = {~, "1", #, "2"};
+tape t1(numbers) = {~, #, "1", #, "2"};
 
 Tape_def
 ├─ name:     t1
 ├─ alphabet: Set_Ref  numbers
-└─ cells:    [~, "1", #, "2"]
+└─ cells:    [~, #, "1", #, "2"]
 ```
 
 **`Composite_tm`**
@@ -552,8 +547,11 @@ the left-end marker `~`. Returns the token itself.
 `head == ...` / `head != ...`, and the atoms of `next_tm` (e.g. the `"1"` in
 `"1".R.A` means "write 1").
 
-It does not check *where* `~` may appear (a transition that reads `~` must
-write `~` and move `->`); that is a resolver rule too.
+It does not check *where* `~` may appear (an explicit `~` transition must
+write `~` and move `->`); that is a resolver rule too. Transitions for `~`
+are optional: without one, the default rule `(q, ~) |-- (q, ~, ->)` applies
+(see *Default rule for `~`* in the grammar file). That rule is applied when the
+machine runs, not by the parser.
 
 > Tape cells are **not** symbols: `tape_cell ::= STRING | "#"`, and `~` is
 > only allowed as the first cell. `tape_def` checks its cells itself and does
@@ -566,8 +564,8 @@ write `~` and move `->`); that is a resolver rule too.
 **Job:** parses the head movement at the end of a transition. Returns the
 token. The direction must always be written; there is no default.
 
-**Used by:** `transition` only (both forms). It is still a helper because the
-two transition forms both end with it.
+**Used by:** `transition` only. It is still a helper to keep `transition()`
+short and its error message in one place.
 
 > Naming: a member function called `move` hides `std::move` for unqualified
 > calls inside the parser. Always write `std::move(...)` in full in
@@ -580,7 +578,7 @@ two transition forms both end with it.
 **Job:** parses the state a transition goes to: a normal state name (a
 string) or one of the three halt states. Returns the token.
 
-**Used by:** `transition` only (both forms).
+**Used by:** `transition` only.
 
 Which halt states a machine is allowed to enter depends on its
 `final_state` (`{halt}` or `{halt_yes, halt_no}`). The parser accepts all
@@ -623,6 +621,7 @@ state_set_expr → set_or_ref ( ( "\/" | "\" ) set_or_ref )*
 
 ### 5.3 `tape_def`
 - [ ] `( set_or_ref ) = {`, then `consume(BLIP, "Tape must start with '~'.")`,
+      `consume(COMMA, ...)`, `consume(BLANK, "Expect '#' after '~' (start convention).")`,
       then `( "," (STRING | "#") )*`, then `} ;`
 
 ### 5.4 `turing_machine`
@@ -631,13 +630,12 @@ state_set_expr → set_or_ref ( ( "\/" | "\" ) set_or_ref )*
       else if `match(HALT_YES)` → expect `,` `HALT_NO` `}`;
       else error `"Expect 'halt' or 'halt_yes, halt_no'."`
 
-### 5.5 `transition_function` — the two transition forms
-- [ ] `transition()`: parse `( STRING , symbol`, then look at the next token:
-  - `COMMA` → 5-tuple form: `next_state , symbol , move )`
-  - `RIGHT_PAREN` → `|-` form: `) |- ( next_state , symbol , move )`
-  - anything else → error
-- [ ] This is one token of lookahead (`check(COMMA)`), so no backtracking is
-      needed.
+### 5.5 `transition_function`
+- [ ] `transition()`: one fixed sequence, no lookahead needed:
+      `( STRING , symbol ) |-- ( next_state , symbol , direction )`
+- [ ] `consume(COMPUTES, "Expect '|--' after (state, symbol).")`
+- [ ] Scanner: `COMPUTES` is still produced for `|-`; change it to `|--`
+      first (see the token table in the grammar file).
 
 ### 5.6 `composite_tm` — conditions are the precedence chain
 **Book:** ch. 6.2 (precedence levels), ch. 9.3 *Logical Operators*
@@ -671,7 +669,7 @@ equality    → "head" ( ( "==" | "!=" ) symbol | "in" set_or_ref )
     three declarations before it still print (shows `synchronize` works).
   - `test2.tm` — error at `std::left` (no grammar rule yet, as decided).
   - `test3.tm` — parses fully.
-- [ ] Add error tests: missing `;`, tape without `~`, `{halt_yes}` alone,
+- [ ] Add error tests: missing `;`, tape without `~`, tape without `#` after `~`, `{halt_yes}` alone,
       transition with 4 elements, condition without `head`. Each should give
       one clear error, and the parser should continue to the next
       declaration.
@@ -691,9 +689,28 @@ them in a separate pass over the AST:
 - Transition states are in the state set; symbols are in the alphabet,
   `#` or `~`.
 - No two transitions with the same `(state, read)`.
-- A transition that reads `~` writes `~` and moves `->`; `~` is never written
+- An explicit transition that reads `~` writes `~` and moves `->` (without
+  one, the default `(q, ~) |-- (q, ~, ->)` is used at run time); `~` is never written
   anywhere else.
 - A TM's transitions only enter the halt states its `final_state` declares.
 - Tape cells are in the tape's alphabet or `#`.
 - A CTM has exactly one `>` row, which uses `_`; a `_` row is the last row for
   its label; every jump label exists.
+
+## Not in the parser (later, in the interpreter)
+
+The tape is boundless to the right (see *Tape* in the grammar file). The
+parser does not change for this: a `Tape_def` still stores only the written
+cells. The interpreter makes the tape infinite:
+
+- Store the tape as a `std::vector<token>` (or of strings), starting with the
+  cells from `Tape_def::cells`. The head starts at index 1, the `#` after `~`
+  (start convention `(s, ~#w)`).
+- When the head moves right past the end, `push_back` a `#` first. The tape
+  only grows as far as the machine actually goes.
+- Reading `~` uses the default rule `(q, ~) |-- (q, ~, ->)` unless the
+  transition function has its own `(q, ~)` transition.
+- Printing trims the trailing blanks (up to the last non-blank cell or the
+  head, whichever is further right).
+- A step limit (default 10 000) stops machines that do not halt and reports
+  *"did not halt within N steps"*.

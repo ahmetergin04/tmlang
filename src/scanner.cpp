@@ -1,7 +1,7 @@
 
 #include <vector>
 #include "scanner.h"
-#include "error.h"
+#include "tm_error.h"
 
 scanner::scanner(std::string& source): source(source) {}
 
@@ -51,7 +51,12 @@ void scanner::scan_token() {
                   else error(this->line, "Unexpected character: :");
                   break;
         case '=': add_token(match('=') ? EQUAL_EQUAL : EQUAL); break;
-        case '|': add_token(match('-') ? COMPUTES : OR); break;
+        case '|': if(match('-')) {
+                      if(match('-')) add_token(COMPUTES);
+                      else error(this->line, "Unexpected character: -, expected '|--'");
+                  }
+                  else add_token(OR);
+                  break;
         case '/':  if(match('/')) {
                         while(this->peek() != '\n' && ! this->at_end())
                            {this->advance();} }

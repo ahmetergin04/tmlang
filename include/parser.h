@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <initializer_list>
 
-#include "error.h"
+#include "tm_error.h"
 #include "token.h"
 #include "expr.h"
 #include "stmt.h"
@@ -41,10 +41,25 @@ private:
     
     std::unique_ptr<expr> string_set();
     std::unique_ptr<expr> set_or_ref();
+    std::unique_ptr<expr> state_set_expr();
+    
     token symbol();
     token direction(); 
     token halt_state();
     token next_state();
+
+    std::unique_ptr<stmt> alphabet_declaration();
+    std::unique_ptr<stmt> state_set_declaration();
+    std::unique_ptr<stmt> transition_function_declaration();
+    std::unique_ptr<stmt> tm_declaration();
+    std::unique_ptr<stmt> ctm_declaration();
+    std::unique_ptr<stmt> tape_declaration();
+    std::unique_ptr<stmt> run_statement();
+
+    Transition transition();
+    Final_state final_state();
+
+
 public:
     explicit parser(std::vector<token> tokens) : tokens(std::move(tokens)) {}
     std::vector<std::unique_ptr<stmt>> parse();

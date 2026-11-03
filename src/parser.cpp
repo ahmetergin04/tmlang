@@ -55,7 +55,7 @@ std::unique_ptr<expr> parser::string_set() {
     return std::make_unique<Set_Literal>(std::move(items));
 }
 
-// IDENTIFIER | string_set
+// IDENTIFIER | string_set => set name or set literal
 std::unique_ptr<expr> parser::set_or_ref() {
     if (match({IDENTIFIER})) return std::make_unique<Set_Ref>(previous());
     if (check(LEFT_BRACE)) return string_set();
@@ -113,13 +113,119 @@ void parser::synchronize() {
     }
 }
 
+
+//declerations
+
+std::unique_ptr<stmt> parser::alphabet_declaration() {
+    token name = consume(IDENTIFIER, "Expect alphabet name.");
+    consume(EQUAL, "Expect '=' after alphabet name.");
+    std::unique_ptr<expr> symbols = string_set();
+    consume(SEMICOLON, "Expect ';' after alphabet declaration.");
+    return std::make_unique<Alphabet_def>(name, std::move(symbols));
+}
+
+// set_or_ref ( ( "\/" | "\" ) set_or_ref )*
+std::unique_ptr<expr> parser::state_set_expr() {
+    std::unique_ptr<expr> e = set_or_ref();
+    while (match({UNION, DIFFERENCE})) {
+        token op = previous();
+        std::unique_ptr<expr> right = set_or_ref();
+        e = std::make_unique<Set_Binary>(std::move(e), op, std::move(right));
+    }
+    return e;
+}
+
+std::unique_ptr<stmt> parser::state_set_declaration() {
+    token name = consume(IDENTIFIER, "Expect state set name.");
+    consume(EQUAL, "Expect '=' after state set name.");
+    std::unique_ptr<expr> states = state_set_expr();
+    consume(SEMICOLON, "Expect ';' after state set declaration.");
+    return std::make_unique<State_set_def>(name, std::move(states));
+}
+
+// "(" STRING "," symbol ")" "|--" "(" next_state "," symbol "," move ")"
+Transition parser::transition() {
+    consume(LEFT_PAREN, "Expect '(' to start a transition.");
+    token state = consume(STRING, "Expect a state name.");
+    consume(COMMA, "Expect ',' after state.");
+    token read = symbol();
+    consume(RIGHT_PAREN, "Expect ')' after (state, symbol).");
+    consume(COMPUTES, "Expect '|--' after (state, symbol).");
+    consume(LEFT_PAREN, "Expect '(' after '|--'.");
+    token next = next_state();
+    consume(COMMA, "Expect ',' after next state.");
+    token write = symbol();
+    consume(COMMA, "Expect ',' after written symbol.");
+    token move = direction();
+    consume(RIGHT_PAREN, "Expect ')' after move.");
+    return Transition{state, read, next, write, move};
+}
+
+std::unique_ptr<stmt> parser::transition_function_declaration() {
+    token name = consume(IDENTIFIER, "Expect transition function name.");
+    consume(LEFT_PAREN, "Expect '(' after transition function name.");
+    std::unique_ptr<expr> states = set_or_ref();
+    consume(COMMA, "Expect ',' after state set.");
+    std::unique_ptr<expr> alphabet = set_or_ref();
+    consume(RIGHT_PAREN, "Expect ')' after alphabet.");
+    consume(EQUAL, "Expect '=' after ')'.");
+    consume(LEFT_BRACE, "Expect '{' before transitions.");
+    std::vector<Transition> transitions;
+    do {
+        transitions.push_back(transition());
+    } while (match({COMMA}));
+    consume(RIGHT_BRACE, "Expect '}' after transitions.");
+    consume(SEMICOLON, "Expect ';' after transition function declaration.");
+    return std::make_unique<Transition_fun>(name, std::move(states), std::move(alphabet), std::move(transitions));
+}
+
+
+//tm M1(Q1, numbers, "C", d1, {halt});               // computes
+//tm M2(Q2, colors,  "x", d2, {halt_yes, halt_no});  // decides
+// tm, Identifier, "(", state_set_expr, ",", set_or_ref, ",", STRING, ",", transition_function, ",", "{", (halt_state ("," halt_state)*), "}", ";"
+
+// "{" "halt" "}" | "{" "halt_yes" "," "halt_no" "}"
+Final_state parser::final_state() {
+    consume(LEFT_BRACE, "Expect '{' before final states.");
+    std::vector<token> halts;
+    if (match({HALT})) {
+        halts.push_back(previous());
+    } else if (match({HALT_YES})) {
+        halts.push_back(previous());
+        consume(COMMA, "Expect ',' after 'halt_yes'.");
+        halts.push_back(consume(HALT_NO, "Expect 'halt_no' after 'halt_yes,'."));
+    } else {
+        throw Perror(peek(), "Expect 'halt' or 'halt_yes, halt_no'.");
+    }
+    consume(RIGHT_BRACE, "Expect '}' after final states.");
+    return Final_state{std::move(halts)};
+}
+
+std::unique_ptr<stmt> parser::tm_declaration(){
+    token name = consume(IDENTIFIER, "Expect Turing machine name.");
+    consume(LEFT_PAREN, "Expect '(' after Turing machine name.");
+    std::unique_ptr<expr> states = set_or_ref();
+    consume(COMMA, "Expect ',' after state set.");
+    std::unique_ptr<expr> alphabet = set_or_ref();
+    consume(COMMA, "Expect ',' after alphabet.");
+    token start = consume(STRING, "Expect a start state.");
+    consume(COMMA, "Expect ',' after start state.");
+    token func = consume(IDENTIFIER, "Expect a transition function name.");
+    consume(COMMA, "Expect ',' after transition function name.");
+    Final_state final_states = final_state();
+    consume(RIGHT_PAREN, "Expect ')' after Turing machine declaration.");
+    consume(SEMICOLON, "Expect ';' after Turing machine declaration.");
+    return std::make_unique<Turing_machine>(name, std::move(states), std::move(alphabet), start, func, final_states);
+}
+
+
 std::unique_ptr<stmt> parser::declaration() {
     try {
         if (match({ALPHABET})) return alphabet_declaration();
         if (match({STATE_SET})) return state_set_declaration();
-        if (match({TRANS_FUN})) return transition_fun_declaration();
-        if (match({TM})) return turing_machine_declaration();
-        if (match({CTM})) return composite_tm_declaration();
+        if (match({TRANS_FUN})) return transition_function_declaration();
+        if (match({TM})) return tm_declaration();
+        if (match({CTM})) return ctm_declaration();
         if (match({TAPE})) return tape_declaration();
         if (match({RUN})) return run_statement();
 

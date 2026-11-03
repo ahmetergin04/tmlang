@@ -14,28 +14,28 @@ state_set Q1 = {"A", "B", "C", "D"};
 // (state_set Q1_sub (\/ (\ Q1 {"A" "D"}) {"E"}))
 state_set Q1_sub = Q1 \ {"A", "D"} \/ {"E"};
 
-// Both transition forms print the same way.
+// A transition prints as (state read next write move).
 // (transition_func d1 Q1 numbers
 //   ("A" "1" "B" "2" ->)
 //   ("B" # "C" # <-)
 //   ("C" "2" "B" "9" ->)
 //   ("B" "3" halt "3" <>))
 transition_func d1(Q1, numbers) = {
-    ("A", "1", "B", "2", ->),
-    ("B", #, "C", #, <-),
-    ("C", "2") |- ("B", "9", ->),
-    ("B", "3") |- (halt, "3", <>)
+    ("A", "1") |-- ("B", "2", ->),
+    ("B", #)   |-- ("C", #, <-),
+    ("C", "2") |-- ("B", "9", ->),
+    ("B", "3") |-- (halt, "3", <>)
 };
 
-// Set literals as arguments instead of names.
+// Set literals as arguments instead of names, and an explicit ~ transition.
 // (transition_func d2 {"s" "q"} {"a" "b"}
 //   ("s" ~ "s" ~ ->)
 //   ("s" "a" halt_yes "a" <>)
 //   ("s" "b" halt_no "b" <>))
 transition_func d2({"s", "q"}, {"a", "b"}) = {
-    ("s", ~, "s", ~, ->),
-    ("s", "a", halt_yes, "a", <>),
-    ("s", "b") |- (halt_no, "b", <>)
+    ("s", ~)   |-- ("s", ~, ->),
+    ("s", "a") |-- (halt_yes, "a", <>),
+    ("s", "b") |-- (halt_no, "b", <>)
 };
 
 // Computing machine: one halt state.
@@ -46,11 +46,16 @@ tm M1(Q1, numbers, "A", d1, {halt});
 // (tm M2 {"s" "q"} {"a" "b"} "s" d2 {halt_yes halt_no})
 tm M2({"s", "q"}, {"a", "b"}, "s", d2, {halt_yes, halt_no});
 
-// (tape t1 numbers [~ "1" # "2" "3"])
-tape t1(numbers) = {~, "1", #, "2", "3"};
+// Every tape starts with ~, # (start convention: the head starts on the #).
+// (tape t1 numbers [~ # "1" # "2" "3"])
+tape t1(numbers) = {~, #, "1", #, "2", "3"};
 
-// (tape t2 {"a" "b"} [~ "a" "b"])
-tape t2({"a", "b"}) = {~, "a", "b"};
+// (tape t2 {"a" "b"} [~ # "a" "b"])
+tape t2({"a", "b"}) = {~, #, "a", "b"};
+
+// Empty input.
+// (tape t3 numbers [~ #])
+tape t3(numbers) = {~, #};
 
 // Conditions: WildCard, Membership, Equality, and Logical
 // (& binds tighter than |).

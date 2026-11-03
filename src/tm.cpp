@@ -4,7 +4,7 @@
 #include <sstream>
 
 #include "scanner.h"
-#include "error.h"
+#include "tm_error.h"
 #include "token.h"
 #include "parser.h"
 

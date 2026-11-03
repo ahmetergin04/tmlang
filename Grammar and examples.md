@@ -58,19 +58,19 @@ Keywords are lowercase and case-sensitive (`TM` is an identifier, not a keyword)
 | `->` | `RIGHT_ARROW` | Move head right |
 | `<-` | `LEFT_ARROW` | Move head left |
 | `<>` | `STAY` *(new, scanner does not produce it yet)* | Head stays in place |
-| `\|-` | `COMPUTES` | Yields, in the `(state, symbol) \|- (...)` transition form |
+| `\|--` | `COMPUTES` *(scanner still matches `\|-`; needs updating)* | Yields: `(state, symbol) \|-- (...)` in a transition |
 | `==` | `EQUAL_EQUAL` | Equal |
 | `!=` | `BANG_EQUAL` | Not equal |
 | `&` | `AND` | Logical and |
 | `\|` | `OR` | Logical or |
-| `\/` | `UNION` | Set union |
+| `\/` | `UNION` | Set union | <!-- "\" this symbol is for to next symbol to produce, if looking from vscode dont be confused -->
 | `\` | `DIFFERENCE` | Set difference |
 | `!` | `BANG` | Not — reserved, not used by the grammar yet |
 | `*` | `KLEENE_CLOSURE` | Kleene star — reserved, not used by the grammar yet |
 | `::` | `SCOPE_RESOLUTION_OPERATOR` | Reserved, not used by the grammar yet |
 
 Two-character operators are matched first (maximal munch): `->` before `>`,
-`<-` and `<>` before `<`, `==` before `=`, `!=` before `!`, `|-` before `|`, `\/` before `\`.
+`<-` and `<>` before `<`, `==` before `=`, `!=` before `!`, `|--` before `|`, `\/` before `\`.
 
 ### Token classes
 
@@ -132,6 +132,30 @@ halt_state   ::= "halt" | "halt_yes" | "halt_no"
 - `~` may only be read, never written somewhere new: a transition that reads
   `~` must write `~` back and move `->`.
 
+#### Default rule for `~`
+
+A machine does **not** need to list transitions for `~`. If a transition
+function has no transition for `(q, ~)`, the machine uses:
+
+```
+(q, ~) |-- (q, ~, ->)        // stay in the same state, keep ~, move right
+```
+
+This follows the course definition: reading the blip always moves right
+(`δ(q, ◇) = (q', →)`), and the blip can never be written or erased. The only
+free choice is the next state, and the default keeps the current one. That is
+also why the course's example tables have no rows for `◇`.
+
+An explicit transition overrides the default, for when the machine should
+change state at the left end:
+
+```
+("q", ~) |-- ("p", ~, ->)    // at the left end, go on in state "p"
+```
+
+An explicit `~` transition must still write `~` and move `->`; anything else
+is an error.
+
 ### Alphabet
 
 ```
@@ -155,24 +179,22 @@ Set operators have equal precedence and are evaluated left to right, so
 
 ```
 next_state          ::= STRING | halt_state
-transition          ::= "(" STRING "," symbol "," next_state "," symbol "," move ")"
-                      | "(" STRING "," symbol ")" "|-" "(" next_state "," symbol "," move ")"
+transition          ::= "(" STRING "," symbol ")" "|--" "(" next_state "," symbol "," move ")"
 transition_function ::= "transition_func" IDENTIFIER
                         "(" ( IDENTIFIER | state_set ) "," ( IDENTIFIER | alphabet ) ")"
                         "=" "{" transition ( "," transition )* "}" ";"
 ```
 
-A transition has two equivalent forms. Both can be mixed in one function:
+A transition is written `(state, read) |-- (next state, write, move)`:
 
-| Form | Example |
-|---|---|
-| `(state, read, next state, write, move)` | `("A", "1", "B", "2", ->)` |
-| `(state, read) \|- (next state, write, move)` | `("C", "2") \|- ("B", "9", ->)` |
+```
+("A", "1") |-- ("B", "2", ->)
+```
 
-Both examples read: *in state A reading 1, go to state B, write 2, move right*
-(and the same for the second with C, 2, B, 9).
+reads: *in state A reading 1, go to state B, write 2, move right*.
 
 The move is always written: `->` (right), `<-` (left) or `<>` (stay).
+Transitions for `~` are optional; see the default rule for `~` above.
 
 ### Turing machine
 
@@ -201,12 +223,46 @@ only enter the halting states its `final_state` declares.
 ```
 tape_cell ::= STRING | "#"
 tape_def  ::= "tape" IDENTIFIER "(" ( IDENTIFIER | alphabet ) ")"
-              "=" "{" "~" ( "," tape_cell )* "}" ";"
+              "=" "{" "~" "," "#" ( "," tape_cell )* "}" ";"
 ```
 
-Every tape starts with `~` (blip), the left-end marker; it is mandatory and
-appears nowhere else. The other cells are symbols of the tape's alphabet or
-`#` (blank). `{~}` is an empty tape.
+Every tape starts with `~, #`: the blip `~` (the left-end marker), then one
+blank. Both are mandatory, and `~` appears nowhere else. The input comes after
+them; its cells are symbols of the tape's alphabet or `#` (blank). `{~, #}` is
+a tape with empty input.
+
+**Start convention.** The head starts on the `#` right after `~` (cell 1),
+following the course convention `(s, ~#w)`: blip, blank, then the input `w`.
+
+```
+tape t(a) = {~, #, "a", "b"};
+
+~  #  "a"  "b"
+   ^ head starts here
+```
+
+#### The tape is boundless to the right
+
+The cells written in a `tape` declaration are only the **start** of the tape.
+After the last written cell, the tape goes on forever, and every cell there is
+`#` (blank):
+
+```
+tape t(a) = {~, #, "a", "b"};
+
+~  #  "a"  "b"  #  #  #  #  ...   (forever to the right)
+```
+
+- The tape has a left end (`~`), and no right end. This is the standard
+  Turing machine model: the course definitions of *decides*, *computes* and
+  *semi-decides* all assume it.
+- Moving right past the last written cell is always allowed; the head finds
+  a `#` there.
+- Moving left past `~` cannot happen: reading `~` always moves right (see the
+  default rule for `~`).
+- There is no "finite tape" option. A machine on a bounded tape is a weaker
+  model (a linear bounded automaton) and could give different results for the
+  same machine.
 
 ### Composite Turing machine (CTM)
 
@@ -249,6 +305,17 @@ run ::= "run" "(" IDENTIFIER "," IDENTIFIER ")" ";"
 
 Runs a TM or CTM (first identifier) on a tape (second identifier).
 
+Because the tape is boundless (see *Tape*), two things are defined for
+running a machine:
+
+- **Printing the tape.** The infinite blanks are not printed. The tape is
+  shown up to its last non-blank cell, or up to the head if the head is
+  further right.
+- **Step limit.** A machine may never halt (for example one that moves right
+  forever). `run` stops after a fixed number of steps (default: 10 000) and
+  reports *"did not halt within N steps"*. This is not a halting answer: a
+  semi-deciding machine might have halted later.
+
 ---
 
 ## 3. Examples
@@ -266,27 +333,27 @@ state_set Q2     = {"x", "y", "w", "p", "q"};
 
 // ---- Transition functions ----
 
-// Both forms can be mixed.
+// No transition for ~: the default rule ("C", ~) |-- ("C", ~, ->) applies.
 transition_func d1(Q1, numbers) = {
-    ("C", ~,   "C",  ~,   ->),
-    ("A", "1", "B",  "2", ->),
-    ("C", "2") |- ("B", "9", ->),
-    ("B", "3", halt, "3", <>)
+    ("A", "1") |-- ("B",  "2", ->),
+    ("C", "2") |-- ("B",  "9", ->),
+    ("B", "3") |-- (halt, "3", <>)
 };
 
+// A ~ transition can also be written out; this one is the same as the default.
 transition_func d2(Q2, colors) = {
-    ("x", ~,       "x",      ~,       ->),
-    ("x", "green", halt_yes, "green", ->),
-    ("x", "blue",  halt_no,  "blue",  ->)
+    ("x", ~)       |-- ("x",      ~,       ->),
+    ("x", "green") |-- (halt_yes, "green", ->),
+    ("x", "blue")  |-- (halt_no,  "blue",  ->)
 };
 
 // ---- Turing machines ----
-tm M1(Q1, numbers, "C", d1, {halt});               // computes
+tm M1(Q1, numbers, "C", d1, {halt});               // computes, semi decides
 tm M2(Q2, colors,  "x", d2, {halt_yes, halt_no});  // decides
 
 // ---- Tapes ----
-tape t1(numbers) = {~, "1", "2", "3", "3"};
-tape t2(colors)  = {~, "green", #, "blue"};
+tape t1(numbers) = {~, #, "1", "2", "3", "3"};
+tape t2(colors)  = {~, #, "green", #, "blue"};
 
 // ---- Composite Turing machines ----
 
@@ -326,8 +393,8 @@ run(skip_sub, t1);
    `"{" # | STRING ( "," STRING )* "}"` split at the `|` the same way and left
    `#` unquoted. The PDF used `#` for the left-end marker; the marker is now `~`
    (blip) and `#` is the blank symbol. The rule is now
-   `"{" "~" ( "," tape_cell )* "}"`, so every tape starts with `~` and `~`
-   appears nowhere else. `~` and `#` are both `symbol`s, so transitions can
+   `"{" "~" "," "#" ( "," tape_cell )* "}"`, so every tape starts with `~, #`
+   (the start convention) and `~` appears nowhere else. `~` and `#` are both `symbol`s, so transitions can
    read them and conditions can test for them.
 3. **`equality`.** The PDF rule
    `STRING ( ( '!=' | '==' ) STRING )* || (STRING ('in' Alphabet))*` had five
@@ -361,10 +428,9 @@ run(skip_sub, t1);
    - `!`, `*` and `::` are reserved for future use.
 8. **Transitions.** The PDF had a 4-tuple `(state, read, next, action)` where
    the action was either a move or a write. A transition now always writes and
-   moves, and has two equivalent forms:
-   `(state, read, next, write, move)` and
-   `(state, read) |- (next, write, move)`. The move must always be written, and
-   is `->` (right), `<-` (left) or `<>` (stay).
+   moves, and has one form: `(state, read) |-- (next, write, move)`.
+   The move must always be written, and is `->` (right), `<-` (left) or `<>`
+   (stay). Transitions for `~` are optional (default rule).
 
 ### Additions needed so the PDF's examples parse
 
@@ -383,10 +449,10 @@ All of these use tokens the scanner already produces.
   quoted strings.
 - **Duplicate declarations.** The PDF's two example blocks were merged, so no
   name is declared twice.
-- **`d1`.** Uses the corrected transitions `("A","1","B","2",->)` and
-  `("C","2") |- ("B","9",->)`. The PDF's `A` as the move in the second one was
-  read as a move, written `->`. Two transitions were added so the machine can
-  start on `~` and can halt.
+- **`d1`.** Uses the corrected transitions `("A","1") |-- ("B","2",->)` and
+  `("C","2") |-- ("B","9",->)`. The PDF's `A` as the move in the second one was
+  read as a move, written `->`. A transition was added so the machine can
+  halt; starting on `~` is covered by the default rule.
 - **`blank = %`.** Removed: `#` is the blank symbol, and the scanner rejects `%`.
 - **`M1`.** It used `{A,B}` as final states; it now uses `{halt}`.
 - **`M2`.** It had an empty argument and an undefined `d2`. `d2` is now
