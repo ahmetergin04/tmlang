@@ -143,6 +143,8 @@ std::unique_ptr<stmt> parser::state_set_declaration() {
     return std::make_unique<State_set_def>(name, std::move(states));
 }
 
+// WHOLE TRANSITION FUNCTION
+
 // "(" STRING "," symbol ")" "|--" "(" next_state "," symbol "," move ")"
 Transition parser::transition() {
     consume(LEFT_PAREN, "Expect '(' to start a transition.");
@@ -180,9 +182,7 @@ std::unique_ptr<stmt> parser::transition_function_declaration() {
 }
 
 
-//tm M1(Q1, numbers, "C", d1, {halt});               // computes
-//tm M2(Q2, colors,  "x", d2, {halt_yes, halt_no});  // decides
-// tm, Identifier, "(", state_set_expr, ",", set_or_ref, ",", STRING, ",", transition_function, ",", "{", (halt_state ("," halt_state)*), "}", ";"
+// WHOLE TM
 
 // "{" "halt" "}" | "{" "halt_yes" "," "halt_no" "}"
 Final_state parser::final_state() {
@@ -218,6 +218,141 @@ std::unique_ptr<stmt> parser::tm_declaration(){
     return std::make_unique<Turing_machine>(name, std::move(states), std::move(alphabet), start, func, final_states);
 }
 
+// "head" ( ( "==" | "!=" ) symbol | "in" set_or_ref )
+std::unique_ptr<expr> parser::equality() {
+    if (check(UNDERSCORE)) throw Perror(peek(), "'_' is only allowed in the '>' row.");
+    consume(HEAD, "Expect 'head' in condition.");
+    if (match({EQUAL_EQUAL, BANG_EQUAL})) {
+        token op = previous();
+        token sym = symbol();
+        return std::make_unique<Equality>(op, sym);
+    }
+    if (match({IN})) {
+        token in = previous();
+        std::unique_ptr<expr> set = set_or_ref();
+        return std::make_unique<Membership>(in, std::move(set));
+    }
+    throw Perror(peek(), "Expect '==', '!=' or 'in' after 'head'.");
+}
+
+// WHOLE CTM
+
+// equality ( "&" equality )*
+std::unique_ptr<expr> parser::and_logical() {
+    std::unique_ptr<expr> e = equality();
+    while (match({AND})) {
+        token op = previous();
+        std::unique_ptr<expr> right = equality();
+        e = std::make_unique<Logical>(std::move(e), op, std::move(right));
+    }
+    return e;
+}
+
+// and_logical ( "|" and_logical )*
+std::unique_ptr<expr> parser::or_logical() {
+    std::unique_ptr<expr> e = and_logical();
+    while (match({OR})) {
+        token op = previous();
+        std::unique_ptr<expr> right = and_logical();
+        e = std::make_unique<Logical>(std::move(e), op, std::move(right));
+    }
+    return e;
+}
+
+std::unique_ptr<expr> parser::condition() {
+    return or_logical();
+}
+
+// next_tm_atom ( "." next_tm_atom )*,  next_tm_atom = IDENTIFIER | symbol | halt_state
+std::vector<token> parser::next_tm() {
+    std::vector<token> atoms;
+    do {
+        if (match({IDENTIFIER})) atoms.push_back(previous());
+        else if (check(HALT) || check(HALT_YES) || check(HALT_NO)) atoms.push_back(halt_state());
+        else atoms.push_back(symbol());
+    } while (match({DOT}));
+    return atoms;
+}
+
+// "(" ">" "," "_" "," next_tm ")"
+Ctm_row parser::first_ctm_row() {
+    consume(LEFT_PAREN, "Expect '(' to start a ctm row.");
+    token label = consume(START, "The first ctm row must be the '>' row.");
+    consume(COMMA, "Expect ',' after '>'.");
+    token underscore = consume(UNDERSCORE, "The '>' row's condition must be '_'.");
+    consume(COMMA, "Expect ',' after '_'.");
+    std::vector<token> next = next_tm();
+    consume(RIGHT_PAREN, "Expect ')' after ctm row.");
+    return Ctm_row{label, std::make_unique<WildCard>(underscore), std::move(next)};
+}
+
+// "(" IDENTIFIER "," condition "," next_tm ")"
+Ctm_row parser::ctm_row() {
+    consume(LEFT_PAREN, "Expect '(' to start a ctm row.");
+    if (check(START)) throw Perror(peek(), "Only the first ctm row can be the '>' row.");
+    token label = consume(IDENTIFIER, "Expect a row label.");
+    consume(COMMA, "Expect ',' after row label.");
+    std::unique_ptr<expr> cond = condition();
+    consume(COMMA, "Expect ',' after condition.");
+    std::vector<token> next = next_tm();
+    consume(RIGHT_PAREN, "Expect ')' after ctm row.");
+    return Ctm_row{label, std::move(cond), std::move(next)};
+}
+
+std::unique_ptr<stmt> parser::ctm_declaration() {
+    token name = consume(IDENTIFIER, "Expect ctm name.");
+    consume(LEFT_PAREN, "Expect '(' after ctm name.");
+    std::unique_ptr<expr> alphabet = nullptr;           // "_": any alphabet
+    if (!match({UNDERSCORE})) alphabet = set_or_ref();
+    consume(RIGHT_PAREN, "Expect ')' after alphabet.");
+    consume(EQUAL, "Expect '=' after ')'.");
+    consume(LEFT_BRACE, "Expect '{' before ctm rows.");
+    std::vector<Ctm_row> rows;
+    rows.push_back(first_ctm_row());
+    while (match({COMMA})) {
+        rows.push_back(ctm_row());
+    }
+    consume(RIGHT_BRACE, "Expect '}' after ctm rows.");
+    consume(SEMICOLON, "Expect ';' after ctm declaration.");
+    return std::make_unique<Composite_tm>(name, std::move(alphabet), std::move(rows));
+}
+
+//tape t1(numbers) = {~, #, "1", "2", "3", "3"};
+
+std::vector<token> parser::tape_set(){
+    consume(LEFT_BRACE, "Expect '{' to start a tape set.");
+    std::vector<token> cells;
+    cells.push_back(consume(BLIP, "Expect '~' to start a tape set."));
+    consume(COMMA, "Expect ',' after '~' in tape set.");
+    cells.push_back(consume(BLANK, "Expect '#' after '~' in tape set."));
+    while(match({COMMA})) {
+        if(match({BLANK})) cells.push_back(previous());
+        else cells.push_back(consume(STRING, "Expect a string or '#' in tape set."));
+    }
+    consume(RIGHT_BRACE, "Expect '}' after tape set.");
+    return cells;
+}
+
+std::unique_ptr<stmt> parser::tape_declaration() {
+    token name = consume(IDENTIFIER, "Expect tape name.");
+    consume(LEFT_PAREN, "Expect '(' after tape name.");
+    std::unique_ptr<expr> alphabet = set_or_ref();
+    consume(RIGHT_PAREN, "Expect ')' after tape alphabet.");
+    consume(EQUAL, "Expect '=' after tape name.");
+    std::vector<token> cells = tape_set();
+    consume(SEMICOLON, "Expect ';' after tape declaration.");
+    return std::make_unique<Tape_def>(name, std::move(alphabet),std::move(cells));
+}
+
+std::unique_ptr<stmt> parser::run_statement() {
+    consume(LEFT_PAREN, "Expect '(' after Turing machine name.");
+    token machine = consume(IDENTIFIER, "Expect a Turing machine name.");
+    consume(COMMA, "Expect ',' after Turing machine name.");
+    token tape = consume(IDENTIFIER, "Expect a tape name.");
+    consume(RIGHT_PAREN, "Expect ')' after tape name.");
+    consume(SEMICOLON, "Expect ';' after run statement.");
+    return std::make_unique<Run>(machine, tape);
+}
 
 std::unique_ptr<stmt> parser::declaration() {
     try {

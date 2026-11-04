@@ -7,14 +7,19 @@
 #include "tm_error.h"
 #include "token.h"
 #include "parser.h"
+#include "ast_printer.h"
 
 using namespace std;
 
 void run(string& source){
     scanner  scanner(source);
     vector<token> tokens = scanner.scan_tokens();
-    for(const token& t : tokens){
-        cout << t.to_string();
+    parser parser(tokens);
+    vector<unique_ptr<stmt>> statements = parser.parse();
+    if(had_error) return;
+    ast_printer printer;
+    for(const auto& s: statements){
+        cout << printer.print(*s) << "\n";
     }
 }
 

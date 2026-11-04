@@ -57,31 +57,31 @@ tape t2({"a", "b"}) = {~, #, "a", "b"};
 // (tape t3 numbers [~ #])
 tape t3(numbers) = {~, #};
 
-// Conditions: WildCard, Membership, Equality, and Logical
+// Conditions: WildCard (only in the > row), Membership, Equality, and Logical
 // (& binds tighter than |).
 // (ctm skip_sub numbers
 //   (> _ R.A)
 //   (A (in head numbers_sub) R.A)
 //   (A (in head {"3"}) "1".R.A)
 //   (A (or (== head "4") (and (!= head #) (!= head "1"))) L.A)
-//   (A _ halt))
+//   (A (== head #) halt))
 ctm skip_sub(numbers) = {
     (>, _, R.A),
     (A, head in numbers_sub, R.A),
     (A, head in {"3"}, "1".R.A),
     (A, head == "4" | head != # & head != "1", L.A),
-    (A, _, halt)
+    (A, head == #, halt)
 };
 
 // CTM with "_" instead of an alphabet.
 // (ctm clean_up _
 //   (> _ #.R.B)
 //   (B (== head #) halt)
-//   (B _ L.B))
+//   (B (!= head #) L.B))
 ctm clean_up(_) = {
     (>, _, #.R.B),
     (B, head == #, halt),
-    (B, _, L.B)
+    (B, head != #, L.B)
 };
 
 // (run M1 t1)

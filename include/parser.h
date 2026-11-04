@@ -42,11 +42,17 @@ private:
     std::unique_ptr<expr> string_set();
     std::unique_ptr<expr> set_or_ref();
     std::unique_ptr<expr> state_set_expr();
+    std::unique_ptr<expr> condition();
+    std::unique_ptr<expr> or_logical();
+    std::unique_ptr<expr> and_logical();
+    std::unique_ptr<expr> equality();
     
     token symbol();
     token direction(); 
     token halt_state();
     token next_state();
+    std::vector<token> next_tm();
+    std::vector<token> tape_set();
 
     std::unique_ptr<stmt> alphabet_declaration();
     std::unique_ptr<stmt> state_set_declaration();
@@ -58,6 +64,9 @@ private:
 
     Transition transition();
     Final_state final_state();
+    Ctm_row ctm_row();
+    Ctm_row first_ctm_row();
+
 
 
 public:

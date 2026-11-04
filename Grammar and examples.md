@@ -267,7 +267,7 @@ tape t(a) = {~, #, "a", "b"};
 ### Composite Turing machine (CTM)
 
 ```
-condition    ::= "_" | or_logical
+condition    ::= or_logical
 or_logical   ::= and_logical ( "|" and_logical )*
 and_logical  ::= equality ( "&" equality )*
 equality     ::= "head" ( ( "==" | "!=" ) symbol
@@ -276,19 +276,22 @@ equality     ::= "head" ( ( "==" | "!=" ) symbol
 next_tm      ::= next_tm_atom ( "." next_tm_atom )*
 next_tm_atom ::= IDENTIFIER | symbol | halt_state
 
-ctm_row      ::= "(" ( IDENTIFIER | ">" ) "," condition "," next_tm ")"
+start_row    ::= "(" ">" "," "_" "," next_tm ")"
+ctm_row      ::= "(" IDENTIFIER "," condition "," next_tm ")"
 composite_tm ::= "ctm" IDENTIFIER "(" ( IDENTIFIER | alphabet | "_" ) ")"
-                 "=" "{" ctm_row ( "," ctm_row )* "}" ";"
+                 "=" "{" start_row ( "," ctm_row )* "}" ";"
 ```
 
-- **Row state**: `>` marks the entry row (exactly one per CTM). Other rows are
-  named by a label such as `A`.
+- **Entry row**: the first row is always the `>` row, and it is the only one.
+  Its condition is always `_` (always true): by the start convention the head
+  starts on the `#` after `~`, so there is nothing to test yet.
+- **Other rows** are named by a label such as `A`, and always have a real
+  condition. `_` is **only** allowed in the `>` row; there is no fallback row.
 - **Row order**: rows with the same label are checked top to bottom, and the
-  first row whose condition is true is taken. A `_` row is the fallback, so it
-  comes last for its label (any row after it could never be reached). The `>`
-  row always uses `_`.
-- **Condition**: `_` is always true. Otherwise it tests the symbol under the
-  head. `|` binds weaker than `&`, so `head == "1" | head == "2" & head != #`
+  first row whose condition is true is taken. If no row of the label matches
+  the symbol under the head, the machine is stuck (a run-time error), so the
+  rows of a label should cover every symbol that can be under the head.
+- **Condition**: tests the symbol under the head. `|` binds weaker than `&`, so `head == "1" | head == "2" & head != #`
   means `head == "1" | (head == "2" & head != #)`.
 - **next_tm** is a chain run left to right. Each atom is one of:
   - a machine name, such as `R` or `L`;
@@ -361,7 +364,7 @@ tape t2(colors)  = {~, #, "green", #, "blue"};
 ctm skip_sub(numbers) = {
     (>, _, R.A),
     (A, head in numbers_sub, R.A),
-    (A, _, halt)
+    (A, head == "9" | head == #, halt)    // every other symbol: "9" or blank
 };
 
 // Erase leftwards (write blanks) until a blank is under the head.

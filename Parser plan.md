@@ -67,7 +67,7 @@ token, not just the string, keeps `line` for error messages later.
 | `Set_Literal` | `std::vector<token> items` | `alphabet`, `state_set` | `Literal` |
 | `Set_Ref` | `token name` | `IDENTIFIER` inside a set expression | `Variable` |
 | `Set_Binary` | `left`, `token op` (`UNION`/`DIFFERENCE`), `right` | `state_set_expr` | `Binary` |
-| `WildCard` | `token underscore` | `"_"` condition | `Literal` |
+| `WildCard` | `token underscore` | `"_"` in the `>` row | `Literal` |
 | `Logical` | `left`, `token op` (`OR`/`AND`), `right` | `or_logical`, `and_logical` | `Logical` |
 | `Equality` | `token op` (`EQUAL_EQUAL`/`BANG_EQUAL`), `token symbol` | `"head" ("=="\|"!=") symbol` | `Binary` |
 | `Membership` | `token in`, `std::unique_ptr<Expr> set` (`Set_Ref` or `Set_Literal`) | `"head" "in" ...` | — |
@@ -108,9 +108,9 @@ Set_Binary  op: \/
 └─ right: Set_Literal  "blank"
 ```
 
-**`WildCard`** — the always-true condition.
+**`WildCard`** — the always-true condition, allowed only in the `>` row.
 ```
-(A, _, halt)            // the "_" in this CTM row
+(>, _, R.A)             // the "_" in the entry row (the only place it is allowed)
 
 WildCard
 └─ underscore: _
@@ -295,7 +295,7 @@ Tape_def
 ctm skip_sub(numbers) = {
     (>, _, R.A),
     (A, head in numbers_sub, R.A),
-    (A, _, halt) //like a default case
+    (A, head == "9" | head == #, halt)
 };
 
 Composite_tm
@@ -303,7 +303,7 @@ Composite_tm
 ├─ alphabet: Set_Ref  numbers          // null for ctm clean_up(_)
 └─ rows:     [ Ctm_row(>, WildCard,                    [R, A]),
                Ctm_row(A, Membership(Set_Ref numbers_sub), [R, A]),
-               Ctm_row(A, WildCard,                    [halt]) ]
+               Ctm_row(A, Logical(== "9", == #),       [halt]) ]
 ```
 
 **`Run`**
@@ -315,8 +315,8 @@ Run
 └─ tape:    t1
 ```
 
-- [ ] Update `visitor.h` to match the final list of node classes.
-- [ ] Visitor methods return `void`. The book's visitors return values
+- [x] Update `visitor.h` to match the final list of node classes.
+- [x] Visitor methods return `void`. The book's visitors return values
       (`R visitBinaryExpr(...)`); in C++ the simplest replacement is to store
       the result in a member of the visitor (e.g. a `std::ostringstream` in the
       printer).
@@ -343,7 +343,7 @@ Run
 
 ```
 parse()        → while (!isAtEnd()) add declaration()
-declaration()  → try { switch on keyword → *_def() } catch (ParseError) { synchronize(); return nullptr; }
+declaration()  → try { match keyword → *_declaration() / run_statement() } catch (ParseError) { synchronize(); return nullptr; }
 ```
 
 ### Why this step is needed
@@ -448,7 +448,7 @@ declaration, and the next `declaration()` call then consumes that keyword.
       function below. Anything else → `throw Perror(peek(), "Expect declaration.")`.
 - [x] `synchronize()` does not skip a declaration keyword it is already on
       (missing `;` fix above).
-- [ ] Every declaration function ends with
+- [x] Every declaration function ends with
       `consume(SEMICOLON, "Expect ';' after ... declaration.")` (done as part
       of Step 5).
 
@@ -602,77 +602,122 @@ three here; the resolver checks it.
 
 ## Step 5 — Declarations (easiest first)
 
-### 5.1 `alphabet_def` and `run`
+Every declaration function starts **after** its keyword (`declaration()`
+already consumed it with `match`), and saves the name with
+`token name = consume(IDENTIFIER, ...)`. Do not use `previous()` for the name
+at the end: by then it is the `;`.
+
+> **Pitfall: argument evaluation order.** C++ does not specify the order in
+> which function arguments are evaluated. In
+> `std::make_unique<Equality>(previous(), symbol())`, GCC ran `symbol()` first,
+> so `previous()` returned the symbol instead of `==`. Whenever an argument
+> consumes tokens, read each token into its own variable first, one statement
+> each: `token op = previous(); token sym = symbol();`
+
+### 5.1 `alphabet_declaration()` and `run_statement()`
 **Book:** ch. 8.2.1
 
-- [ ] `alphabet_def()`: `consume(IDENTIFIER)`, `consume(EQUAL)`, `string_set()`, `;`
-- [ ] `run_stmt()`: `( IDENTIFIER , IDENTIFIER ) ;`
+- [x] `alphabet_declaration()`: `consume(IDENTIFIER)`, `consume(EQUAL)`, `string_set()`, `;`
+- [x] `run_statement()`: `( IDENTIFIER , IDENTIFIER ) ;`
 
-### 5.2 `state_set_def` — your first binary expression
+### 5.2 `state_set_declaration()` — your first binary expression
 **Book:** ch. 6.2, the `term()` / `factor()` loop
 
 ```
 state_set_expr → set_or_ref ( ( "\/" | "\" ) set_or_ref )*
 ```
 
-- [ ] Same loop as the book's `term()`:
+- [x] `state_set_expr()`, the same loop as the book's `term()`:
       `expr = set_or_ref(); while (match({UNION, DIFFERENCE})) { op = previous(); right = set_or_ref(); expr = Set_Binary(expr, op, right); }`
-- [ ] This is left-associative automatically, as the grammar requires.
+- [x] This is left-associative automatically, as the grammar requires.
+- Set algebra is only allowed here. Everywhere else a set is expected
+  (`transition_func`, `tm`, `tape`, `ctm`, `head in`), the argument is a plain
+  `set_or_ref()`: a name or a literal.
 
-### 5.3 `tape_def`
-- [ ] `( set_or_ref ) = {`, then `consume(BLIP, "Tape must start with '~'.")`,
+### 5.3 `tape_declaration()`
+- [x] `( set_or_ref ) = {`, then `consume(BLIP, "Tape must start with '~'.")`,
       `consume(COMMA, ...)`, `consume(BLANK, "Expect '#' after '~' (start convention).")`,
       then `( "," (STRING | "#") )*`, then `} ;`
+- [x] The cells are read by `tape_set()`, which returns a `std::vector<token>`
+      (not a `Set_Literal`: order matters and `#` repeats). It **stores** `~`
+      and `#` too, so the cells are the whole starting tape and the head starts
+      at index 1. After `~, #` it loops with `while (match({COMMA}))`, so
+      `{~, #}` (empty input) is valid.
 
-### 5.4 `turing_machine`
-- [ ] Arguments in order: `set_or_ref , set_or_ref , STRING , IDENTIFIER , final_state`
-- [ ] `final_state()`: after `{`, if `match(HALT)` → expect `}`;
+### 5.4 `tm_declaration()`
+- [x] Arguments in order: `set_or_ref , set_or_ref , STRING , IDENTIFIER , final_state`,
+      then the closing `)` and `;`.
+- [x] `final_state()`: after `{`, if `match(HALT)` → expect `}`;
       else if `match(HALT_YES)` → expect `,` `HALT_NO` `}`;
       else error `"Expect 'halt' or 'halt_yes, halt_no'."`
+      A loop over `halt_state()` would wrongly accept `{halt_no}` or `{halt, halt}`.
 
-### 5.5 `transition_function`
-- [ ] `transition()`: one fixed sequence, no lookahead needed:
+### 5.5 `transition_function_declaration()`
+- [x] Parameters: `( set_or_ref , set_or_ref )`, then `= {`.
+- [x] `transition()`: one fixed sequence, no lookahead needed:
       `( STRING , symbol ) |-- ( next_state , symbol , direction )`
-- [ ] `consume(COMPUTES, "Expect '|--' after (state, symbol).")`
-- [ ] Scanner: `COMPUTES` is still produced for `|-`; change it to `|--`
-      first (see the token table in the grammar file).
+- [x] `consume(COMPUTES, "Expect '|--' after (state, symbol).")`
+- [x] Transitions: `do { transitions.push_back(transition()); } while (match({COMMA}));`
+      then `}` and `;`.
+- [x] Scanner: `COMPUTES` is now produced for `|--`; a leftover `|-` is a
+      scanner error.
 
-### 5.6 `composite_tm` — conditions are the precedence chain
+### 5.6 `ctm_declaration()` — conditions are the precedence chain
 **Book:** ch. 6.2 (precedence levels), ch. 9.3 *Logical Operators*
 
 ```
-condition   → "_" | or_logical
+start_row   → "(" ">" "," "_" "," next_tm ")"
+ctm_row     → "(" IDENTIFIER "," condition "," next_tm ")"
+condition   → or_logical
 or_logical  → and_logical ( "|" and_logical )*
 and_logical → equality ( "&" equality )*
 equality    → "head" ( ( "==" | "!=" ) symbol | "in" set_or_ref )
 ```
 
-- [ ] `condition()`: `if (match({UNDERSCORE})) return WildCard;` else `or_logical()`.
-- [ ] `or_logical()` / `and_logical()`: the same loop as 5.2, producing
+- [x] The `{ ... }` body is `first_ctm_row()` first, then `( "," ctm_row() )*`.
+      This makes the grammar itself enforce "exactly one `>` row, first, with
+      `_`", so the resolver does not have to.
+- [x] `first_ctm_row()` (the grammar's `start_row`): `consume(START)`,
+      `consume(UNDERSCORE, "The '>' row's condition must be '_'.")` →
+      `WildCard`, then `next_tm()`.
+- [x] `condition()`: just `or_logical()`. A `_` here is an error:
+      `equality()` checks for it first and reports
+      "'_' is only allowed in the '>' row."
+- [x] `or_logical()` / `and_logical()`: the same loop as 5.2, producing
       `Logical` nodes (book's `or()` / `and()` in 9.3).
-- [ ] `equality()`: `consume(HEAD)`, then `==`/`!=` + `symbol()` →
+- [x] `equality()`: `consume(HEAD)`, then `==`/`!=` + `symbol()` →
       `Equality`, or `in` + `set_or_ref()` → `Membership`.
-- [ ] `ctm_row()`: `( (IDENTIFIER | START) , condition , next_tm )`
-- [ ] `next_tm()`: one atom, then `( "." atom )*`. An atom is `IDENTIFIER`,
-      `symbol()` or a halt state.
-- [ ] CTM parameter: `IDENTIFIER | string_set | UNDERSCORE`.
+- [x] `ctm_row()`: `( IDENTIFIER , condition , next_tm )`. A second `>` row
+      is an error: "Only the first ctm row can be the '>' row."
+- [x] `next_tm()`: one atom, then `( "." atom )*` (dots, not commas). An atom
+      is `IDENTIFIER`, a halt state or `symbol()`.
+- [x] CTM parameter: `UNDERSCORE` (stored as `nullptr`: any alphabet), else
+      `set_or_ref()`.
 
 ---
 
 ## Step 6 — Wire it up and test
 **Book:** ch. 6.4 *Wiring up the Parser*
 
-- [ ] In `tm.cpp` `run()`: scanner → `parser(tokens).parse()` → if
+- [x] In `tm.cpp` `run()`: scanner → `parser(tokens).parse()` → if
       `had_error` stop, else print every statement with `ast_printer`.
-- [ ] Run the three test files. Expected results:
-  - `test.tm` — error at the end (`transition_func` is incomplete), and the
-    three declarations before it still print (shows `synchronize` works).
-  - `test2.tm` — error at `std::left` (no grammar rule yet, as decided).
-  - `test3.tm` — parses fully.
-- [ ] Add error tests: missing `;`, tape without `~`, tape without `#` after `~`, `{halt_yes}` alone,
-      transition with 4 elements, condition without `head`. Each should give
-      one clear error, and the parser should continue to the next
-      declaration.
+      This is the book's behaviour: a file with any error prints **only** the
+      errors, never a partial AST, and exits with code 65.
+- [x] Run the test files (`./build/Debug/tmlang tests/<file>.tm`). Expected results:
+  - `test.tm` — only `[line 12] Error  at end: Expect transition function name.`,
+    exit 65 (`transition_func` is incomplete).
+  - `test2.tm` — only the error at `std::left` (no grammar rule yet, as
+    decided), exit 65.
+  - `test3.tm` — parses fully, exit 0.
+  - `test_AstPrinter.tm` — parses fully, and every declaration prints exactly
+    the comment written above it, exit 0.
+- [x] Error tests in `tests/test_errors.tm`: missing `;`, tape without `~`,
+      tape without `#` after `~`, `{halt_yes}` alone, transition with 4
+      elements, condition without `head`, `_` outside the `>` row, a CTM whose
+      first row is not `>`. Each gives exactly one error (written in the
+      comment above it) and the parser continues with the next declaration,
+      so the file prints 8 errors and exits with 65. This is also what shows
+      that `synchronize` works, since a partial AST is never printed.
 - [ ] Optional: register the `.tm` files with `add_test(...)` in
       `CMakeLists.txt` so `ctest` actually runs something (it currently has no
       tests).
@@ -694,8 +739,10 @@ them in a separate pass over the AST:
   anywhere else.
 - A TM's transitions only enter the halt states its `final_state` declares.
 - Tape cells are in the tape's alphabet or `#`.
-- A CTM has exactly one `>` row, which uses `_`; a `_` row is the last row for
-  its label; every jump label exists.
+- Every jump label in a CTM exists. (Exactly one `>` row, first, with `_`, is
+  already enforced by the grammar.)
+- Optional warning: the rows of a label do not cover every symbol of the
+  alphabet and `#` (the machine could get stuck).
 
 ## Not in the parser (later, in the interpreter)
 
