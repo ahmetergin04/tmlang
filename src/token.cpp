@@ -24,6 +24,7 @@ std::string token::to_string() const {
         case UNDERSCORE : s = "UNDERSCORE"; break;
         case LEFT_ARROW : s = "LEFT_ARROW"; break;
         case RIGHT_ARROW : s = "RIGHT_ARROW"; break;
+        case STAY : s = "STAY"; break;
         case COMPUTES : s = "COMPUTES"; break;
         case BLANK : s = "BLANK"; break;
         case EQUAL : s = "EQUAL"; break;
@@ -39,6 +40,11 @@ std::string token::to_string() const {
         case HALT : s = "HALT"; break;
         case SEMICOLON : s = "SEMICOLON"; break;
         case BLIP : s = "BLIP"; break;
+        case KLEENE_CLOSURE : s = "KLEENE_CLOSURE"; break;
+        case DIFFERENCE : s = "DIFFERENCE"; break;
+        case BANG : s = "BANG"; break;
+        case SCOPE_RESOLUTION_OPERATOR : s = "SCOPE_RESOLUTION_OPERATOR"; break;
+        case NUMBER : s = "NUMBER(" + this->lexeme+ ")"; break;
         case ENDOFFILE : s = "ENDOFFILE"; break;
         case IDENTIFIER : s = "IDENTIFIER(" + this->lexeme+ ")";break;
         case STRING : s = "STRING(" + this->lexeme+ ")"; break;

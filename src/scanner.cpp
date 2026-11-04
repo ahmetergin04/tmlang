@@ -1,7 +1,7 @@
 
 #include <vector>
 #include "scanner.h"
-#include "error.h"
+#include "tm_error.h"
 
 scanner::scanner(std::string& source): source(source) {}
 
@@ -47,36 +47,33 @@ void scanner::scan_token() {
         case '*': add_token(KLEENE_CLOSURE); break;
         case '~': add_token(BLIP); break;
         case '!': add_token(match('=') ? BANG_EQUAL : BANG); break;
-        case ':': if(match(':')) { 
-                          add_token(SCOPE_RESOLUTION_OPERATOR); break; }
+        case ':': if(match(':')) add_token(SCOPE_RESOLUTION_OPERATOR);
+                  else error(this->line, "Unexpected character: :");
+                  break;
         case '=': add_token(match('=') ? EQUAL_EQUAL : EQUAL); break;
-        case '|': add_token(match('-') ? COMPUTES : OR); break;
-        case '/':  if(match('/')) {
-                        while(this->peek() != '\n' && ! this->at_end()) 
-                           {this->advance();} break;}
-                  else if (match('*')) {
-                        bool closed = false;
-                        while (!this->at_end()) {
-                            if (this->peek() == '*') {
-                                this->advance();
-                                if (this->peek() == '/') {
-                                    this->advance();
-                                    closed = true;
-                                    break;
-                                }
-                            } else {
-                                this->advance();
-                            }
-                        }
-                        if(!closed) 
-                          {error(this->line, "Unterminated comment."); return;}
-                        break;
+        case '|': if(match('-')) {
+                      if(match('-')) add_token(COMPUTES);
+                      else error(this->line, "Unexpected character: -, expected '|--'");
                   }
+                  else add_token(OR);
+                  break;
+        case '/':  if(match('/')) {
+                        while(this->peek() != '\n' && ! this->at_end()){
+                            this->advance();
+                        } 
+                    }
+                   else error(this->line, "Unexpected character: /");
+                   break;
         case '&': add_token(AND); break;
         case '\\': add_token(match('/') ? UNION : DIFFERENCE); break;
-        case '-': if(match('>')) { add_token(RIGHT_ARROW); break;}
-        case '<': if(match('-')) { add_token(LEFT_ARROW); break;}
-        case ' ': 
+        case '-': if(match('>')) add_token(RIGHT_ARROW);
+                  else error(this->line, "Unexpected character: -");
+                  break;
+        case '<': if(match('-')) add_token(LEFT_ARROW);
+                  else if(match('>')) add_token(STAY);
+                  else error(this->line, "Unexpected character: <");
+                  break;
+        case ' ':
         case '\r': 
         case '\t':
                     break;
@@ -87,7 +84,7 @@ void scanner::scan_token() {
                 this->identifier();
                 }
                 else{
-             std::string temp = "Unexpected character: "+c;
+             std::string temp = std::string("Unexpected character: ") + c;
             error(this-> line, temp ); 
 
             }
