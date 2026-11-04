@@ -57,13 +57,13 @@ Keywords are lowercase and case-sensitive (`TM` is an identifier, not a keyword)
 | `>` | `START` | Entry row of a CTM |
 | `->` | `RIGHT_ARROW` | Move head right |
 | `<-` | `LEFT_ARROW` | Move head left |
-| `<>` | `STAY` *(new, scanner does not produce it yet)* | Head stays in place |
-| `\|--` | `COMPUTES` *(scanner still matches `\|-`; needs updating)* | Yields: `(state, symbol) \|-- (...)` in a transition |
+| `<>` | `STAY` | Head stays in place |
+| `\|--` | `COMPUTES` | Yields: `(state, symbol) \|-- (...)` in a transition |
 | `==` | `EQUAL_EQUAL` | Equal |
 | `!=` | `BANG_EQUAL` | Not equal |
 | `&` | `AND` | Logical and |
-| `\|` | `OR` | Logical or |
-| `\/` | `UNION` | Set union | <!-- "\" this symbol is for to next symbol to produce, if looking from vscode dont be confused -->
+| `\|` | `OR` | Logical or | <!-- "\" this symbol is for to next symbol to produce, if looking from vscode dont be confused -->
+| `\/` | `UNION` | Set union | 
 | `\` | `DIFFERENCE` | Set difference |
 | `!` | `BANG` | Not — reserved, not used by the grammar yet |
 | `*` | `KLEENE_CLOSURE` | Kleene star — reserved, not used by the grammar yet |
@@ -427,7 +427,7 @@ run(skip_sub, t1);
    `tm`, `ctm`, `tape`, `run`, `head`, `in`, `halt`, `halt_yes`, `halt_no`.
    - Logical and/or are `&` and `|`. The words `and`, `or` and `not` are not
      keywords.
-   - `<>` is the "stay" move. The scanner needs a new `STAY` token for it.
+   - `<>` is the "stay" move, scanned as a new `STAY` token.
    - `!`, `*` and `::` are reserved for future use.
 8. **Transitions.** The PDF had a 4-tuple `(state, read, next, action)` where
    the action was either a move or a write. A transition now always writes and

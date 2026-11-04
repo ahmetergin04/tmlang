@@ -58,9 +58,10 @@ void scanner::scan_token() {
                   else add_token(OR);
                   break;
         case '/':  if(match('/')) {
-                        while(this->peek() != '\n' && ! this->at_end())
-                           {this->advance();} }
-// TODO: /**/ multi-line comment else if(match('*'))
+                        while(this->peek() != '\n' && ! this->at_end()){
+                            this->advance();
+                        } 
+                    }
                    else error(this->line, "Unexpected character: /");
                    break;
         case '&': add_token(AND); break;
