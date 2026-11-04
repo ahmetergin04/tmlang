@@ -1,5 +1,5 @@
 
-#include "error.h"
+#include "tm_error.h"
 #include <iostream>
 
 bool had_error = false;
