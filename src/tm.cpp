@@ -8,6 +8,9 @@
 #include "token.h"
 #include "parser.h"
 #include "ast_printer.h"
+#include "environment.h"
+
+Environment global_env;
 
 void run(std::string& source){
     scanner  scanner(source);
@@ -19,6 +22,10 @@ void run(std::string& source){
     for(const auto& s: statements){
 		std::cout << printer.print(*s) << "\n";
     }
+	// Interpreter interpreter;
+	// auto final_state;
+	// final_state = interpreter.interpret(statements);
+	// std::cout << final_state;
 }
 
 void run_file(const std::string& path) {
