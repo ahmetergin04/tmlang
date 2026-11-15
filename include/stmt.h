@@ -1,4 +1,4 @@
-#pragma once 
+#pragma once
 
 #include "expr.h"
 
@@ -6,6 +6,7 @@ struct stmt {
     virtual ~stmt() = default;
     virtual void accept(Visitor& visitor) = 0;
 };
+
 // data structures for statements
 struct Transition  {
     token state;

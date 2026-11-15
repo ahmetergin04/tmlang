@@ -7,22 +7,32 @@ set "LSPF=%ROOT%\lspf"
 set "DEBUG_EXE=%BUILD%\Debug\tmlang.exe"
 set "RELEASE_EXE=%BUILD%\Release\tmlang.exe"
 
-if "%~1"=="init"             goto :init
-if "%~1"=="clean"            goto :clean
-if "%~1"=="compile"          goto :compile
-if "%~1"=="run"              goto :run
-if "%~1"=="compile-release"  goto :compile_release
-if "%~1"=="run-release"      goto :run_release
-if "%~1"=="restart"          goto :restart
-if "%~1"=="lsp"              goto :lsp
+rem First argument is the command; everything after it is forwarded to tmlang.
+set "CMD=%~1"
+set "ARGS="
+:collect_args
+shift
+if "%~1"=="" goto :dispatch
+set ARGS=%ARGS% %1
+goto :collect_args
+
+:dispatch
+if "%CMD%"=="init"             goto :init
+if "%CMD%"=="clean"            goto :clean
+if "%CMD%"=="compile"          goto :compile
+if "%CMD%"=="run"              goto :run
+if "%CMD%"=="compile-release"  goto :compile_release
+if "%CMD%"=="run-release"      goto :run_release
+if "%CMD%"=="restart"          goto :restart
+if "%CMD%"=="lsp"              goto :lsp
 
 echo Usage:
 echo   build.bat init
 echo   build.bat clean
 echo   build.bat compile
-echo   build.bat run
+echo   build.bat run [args...]
 echo   build.bat compile-release
-echo   build.bat run-release
+echo   build.bat run-release [args...]
 echo   build.bat restart
 exit /b 1
 
@@ -43,7 +53,7 @@ exit /b %errorlevel%
 
 :run
 call :compile || exit /b 1
-"%DEBUG_EXE%"
+"%DEBUG_EXE%"%ARGS%
 exit /b %errorlevel%
 
 :compile_release
@@ -53,7 +63,7 @@ exit /b %errorlevel%
 
 :run_release
 call :compile_release || exit /b 1
-"%RELEASE_EXE%"
+"%RELEASE_EXE%"%ARGS%
 exit /b %errorlevel%
 
 :lsp

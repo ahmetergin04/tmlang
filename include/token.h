@@ -17,6 +17,7 @@ enum token_type {
     IDENTIFIER, STRING, NUMBER,
     ENDOFFILE
 };
+
 // TODO Check this struct
 struct liter {
     bool boolean;

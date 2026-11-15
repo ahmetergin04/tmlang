@@ -9,28 +9,26 @@
 #include "parser.h"
 #include "ast_printer.h"
 
-using namespace std;
-
-void run(string& source){
+void run(std::string& source){
     scanner  scanner(source);
-    vector<token> tokens = scanner.scan_tokens();
+	std::vector<token> tokens = scanner.scan_tokens();
     parser parser(tokens);
-    vector<unique_ptr<stmt>> statements = parser.parse();
+	std::vector<std::unique_ptr<stmt>> statements = parser.parse();
     if(had_error) return;
     ast_printer printer;
     for(const auto& s: statements){
-        cout << printer.print(*s) << "\n";
+		std::cout << printer.print(*s) << "\n";
     }
 }
 
-void run_file(const string& path) {
-    string line;
-    ifstream input_file(path);
+void run_file(const std::string& path) {
+    std::string line;
+	std::ifstream input_file(path);
     if (!input_file.is_open()){
-        cerr<< "Cannot open path: " << path << "\n"; return; }
-    stringstream ss;
+	std::cerr<< "Cannot open path: " << path << "\n"; return; }
+    std::stringstream ss;
     ss  << input_file.rdbuf();
-    string source = ss.str();
+    std::string source = ss.str();
     run(source);
     if(had_error) exit(65);
 }
@@ -49,7 +47,7 @@ void run_prompt() {
 }
 
 int main(int argc, char *argv[]) {
-    if(argc > 2) { cout << "Usage: tm [script]\n";}
+    if(argc > 2) { std::cout << "Usage: tm [script]\n";}
     else if (argc == 2 ) { run_file(argv[1]);}
     else { run_prompt();}
 return 0;

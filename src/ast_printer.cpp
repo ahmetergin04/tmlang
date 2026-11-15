@@ -1,4 +1,3 @@
-
 #include "ast_printer.h"
 
 std::string ast_printer::print(expr& e) {
