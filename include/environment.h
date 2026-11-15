@@ -30,7 +30,7 @@ struct Machine {
 class Environment {
 public:
 	std::map<std::string, Set>                 alphabets, state_sets;
-	std::map<std::string, Deltas>              funcs;
+	std::map<std::string, Deltas>              trans_funcs;
 	std::map<std::string, Machine>             machines;
 	std::map<std::string, std::vector<Symbol>> tapes;
 };

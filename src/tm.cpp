@@ -9,6 +9,7 @@
 #include "parser.h"
 #include "ast_printer.h"
 #include "environment.h"
+#include "interpreter.h"
 
 Environment global_env;
 
@@ -18,14 +19,12 @@ void run(std::string& source){
     parser parser(tokens);
 	std::vector<std::unique_ptr<stmt>> statements = parser.parse();
     if(had_error) return;
-    ast_printer printer;
-    for(const auto& s: statements){
-		std::cout << printer.print(*s) << "\n";
-    }
-	// Interpreter interpreter;
-	// auto final_state;
-	// final_state = interpreter.interpret(statements);
-	// std::cout << final_state;
+		//   ast_printer printer;
+		//   for(const auto& s: statements){
+		// std::cout << printer.print(*s) << "\n";
+		//   }
+	Interpreter interpreter(global_env);
+	interpreter.interpret(statements);
 }
 
 void run_file(const std::string& path) {
@@ -38,6 +37,7 @@ void run_file(const std::string& path) {
     std::string source = ss.str();
     run(source);
     if(had_error) exit(65);
+	if(had_runtime_error) exit(70);
 }
 
 void run_prompt() {
