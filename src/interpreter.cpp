@@ -59,6 +59,12 @@ void move_left(RunExec& x) {
         else --x.head;
 }
 
+// helper to check for alphabet rules
+// a (= b
+bool subset(const Set& a, const Set& b) {
+        return std::includes(b.begin(), b.end(), a.begin(), a.end());
+}
+
 // run a tm from its start state, with whereever the head is
 RunOutcome Interpreter::run_tm(const TMachine& tm, RunExec& x) {
 	State state = tm.start_state;
@@ -93,24 +99,31 @@ RunOutcome Interpreter::run_tm(const TMachine& tm, RunExec& x) {
     return {RunStatus::HALTED, state};
 }
 
-void Interpreter::visit(Set_Literal& e) {
-	set_result.clear();
-	for (const token& t : e.items) set_result.insert(t.lexeme);
+void Interpreter::check_machine_name(const token& name) {
+        if (name.lexeme == "R" || name.lexeme == "L")
+                throw RuntimeError(name, "'" + name.lexeme + "' is a built-in machine.");
+        if (env.machines.count(name.lexeme) || env.ctms.count(name.lexeme))
+                throw RuntimeError(name, "'" + name.lexeme + "' is already defined.");
 }
 
-void Interpreter::visit(Set_Ref& e) {
-	auto it = set_scope->find(e.name.lexeme);
+void Interpreter::visit(Set_Literal& set) {
+	set_result.clear();
+	for (const token& t : set.items) set_result.insert(t.lexeme);
+}
+
+void Interpreter::visit(Set_Ref& set) {
+	auto it = set_scope->find(set.name.lexeme);
 	if (it == set_scope->end()) {
-		throw RuntimeError(e.name, "Undefined set '" + e.name.lexeme + "'.");
+		throw RuntimeError(set.name, "Undefined set '" + set.name.lexeme + "'.");
 	}
 	set_result = it->second;
 }
 
-void Interpreter::visit(Set_Binary& e) {
-	Set l = eval_set(*e.left,  *set_scope);
-	Set r = eval_set(*e.right, *set_scope);
+void Interpreter::visit(Set_Binary& set) {
+	Set l = eval_set(*set.left,  *set_scope);
+	Set r = eval_set(*set.right, *set_scope);
 	Set out;
-	if (e.op.type == UNION) {
+	if (set.op.type == UNION) {
 		std::set_union(l.begin(), l.end(), r.begin(), r.end(), std::inserter(out, out.end()));
 	}
 	else {
@@ -119,23 +132,23 @@ void Interpreter::visit(Set_Binary& e) {
 	set_result = std::move(out);
 }
 
-void Interpreter::visit(Alphabet_def& s)  {
-	define(env.alphabets,  s.name, eval_set(*s.symbols, env.alphabets));
+void Interpreter::visit(Alphabet_def& alp_def)  {
+	define(env.alphabets,  alp_def.name, eval_set(*alp_def.symbols, env.alphabets));
 }
 
-void Interpreter::visit(State_set_def& s) {
-	define(env.state_sets, s.name, eval_set(*s.states,  env.state_sets));
+void Interpreter::visit(State_set_def& state_set_def) {
+	define(env.state_sets, state_set_def.name, eval_set(*state_set_def.states,  env.state_sets));
 }
 
-void Interpreter::visit(Transition_fun& s) {
-	Set states = eval_set(*s.states,   env.state_sets);
-	Set alpha  = eval_set(*s.alphabet, env.alphabets);
+void Interpreter::visit(Transition_fun& t_func) {
+	Set states = eval_set(*t_func.states,   env.state_sets);
+	Set alpha  = eval_set(*t_func.alphabet, env.alphabets);
 	auto is_symbol = [&](const token& t) {
 		return t.type == BLANK || t.type == BLIP || alpha.count(t.lexeme);
 	};
 
 	Deltas d;
-	for (const Transition& t : s.transitions) {
+	for (const Transition& t : t_func.transitions) {
 		if (!states.count(t.state.lexeme))
 			throw RuntimeError(t.state, "State is not in the state set.");
 		if (!is_symbol(t.symbol) || !is_symbol(t.new_symbol))
@@ -151,20 +164,23 @@ void Interpreter::visit(Transition_fun& s) {
 		if (!d.emplace(key, TmAction{t.new_state.lexeme, t.new_symbol.lexeme, t.direction.type}).second)
 			throw RuntimeError(t.state, "Duplicate transition for this (state, symbol).");
 	}
-	define(env.trans_funcs, s.name, std::move(d));
+	define(env.trans_funcs, t_func.name, std::move(d));
 }
 
-void Interpreter::visit(Turing_machine& s) {
-    Set states = eval_set(*s.states,   env.state_sets);
-    Set alpha  = eval_set(*s.alphabet, env.alphabets);
-    if (!states.count(s.start.lexeme))
-        throw RuntimeError(s.start, "Start state is not in the state set.");
+void Interpreter::visit(Turing_machine& tm) {
+	check_machine_name(tm.name);
+    Set states = eval_set(*tm.states,   env.state_sets);
+    Set alpha  = eval_set(*tm.alphabet, env.alphabets);
+    if (!states.count(tm.start.lexeme)) {
+        throw RuntimeError(tm.start, "Start state is not in the state set.");
+	}
 
-    auto f = env.trans_funcs.find(s.func.lexeme);
-    if (f == env.trans_funcs.end())
-        throw RuntimeError(s.func, "Undefined transition function '" + s.func.lexeme + "'.");
+    auto f = env.trans_funcs.find(tm.func.lexeme);
+    if (f == env.trans_funcs.end()) {
+        throw RuntimeError(tm.func, "Undefined transition function '" + tm.func.lexeme + "'.");
+	}
 
-    bool deciding = s.final_state.state.size() == 2;   // {halt_yes, halt_no}
+    bool deciding = tm.final_state.state.size() == 2;   // {halt_yes, halt_no}
     for (const auto& [key, act] : f->second) { //loop through the deltas of the machine
 		bool bad = false;
 		if (deciding) {
@@ -172,37 +188,42 @@ void Interpreter::visit(Turing_machine& s) {
 		} else {
 			bad = (act.next == "halt_yes" || act.next == "halt_no");
 		}
-        if (bad) throw RuntimeError(s.func, "Transition enters '" + act.next + "', which this machine does not declare.");
+        if (bad) throw RuntimeError(tm.func, "Transition enters '" + act.next + "', which this machine does not declare.");
     }
-    define(env.machines, s.name, TMachine{std::move(states), std::move(alpha), s.start.lexeme, &f->second, deciding});
+    define(env.machines, tm.name, TMachine{std::move(states), std::move(alpha), tm.start.lexeme, &f->second, deciding});
 }
 
-void Interpreter::visit(Tape_def& s) {
-    Set alpha = eval_set(*s.alphabet, env.alphabets);
+void Interpreter::visit(Tape_def& tape_def) {
+    Set alpha = eval_set(*tape_def.alphabet, env.alphabets);
     std::vector<Symbol> cells;
-    for (const token& c : s.cells) {
+    for (const token& c : tape_def.cells) {
         if (c.type == STRING && !alpha.count(c.lexeme)) {
             throw RuntimeError(c, "Tape symbol is not in the alphabet.");
 		}
         cells.push_back(c.lexeme);
     }
-    define(env.tapes, s.name, Tape{std::move(alpha), std::move(cells)});
+    define(env.tapes, tape_def.name, Tape{std::move(alpha), std::move(cells)});
 }
 
 void Interpreter::visit(Run& run) {
-    auto machine = env.machines.find(run.machine.lexeme);
-    if (machine == env.machines.end()) {     // later: also check env.ctms
-        throw RuntimeError(run.machine, "Undefined machine '" + run.machine.lexeme + "'.");
+	auto t = env.tapes.find(run.tape.lexeme);
+	if (t == env.tapes.end()) {
+		throw RuntimeError(run.tape, "Undefined tape '" + run.tape.lexeme + "'.");
+	}
+	const Tape& tape = t->second;
+
+	auto tm = env.machines.find(run.machine.lexeme);
+	if (tm == env.machines.end()) {
+		throw RuntimeError(run.machine, "Undefined machine '" + run.machine.lexeme + "'.");
 	}
 
-    auto tape = env.tapes.find(run.tape.lexeme);
-    if (tape == env.tapes.end()) {
-        throw RuntimeError(run.tape, "Undefined tape '" + run.tape.lexeme + "'.");
+	if (!subset(tape.alphabet, tm->second.alphabet)) {
+        throw RuntimeError(run.tape, "The tape's alphabet is not a subset of the alphabet of '" + run.machine.lexeme + "'.");
 	}
 
-	RunExec execution{tape->second.cells};
-	RunOutcome outcome = run_tm(machine->second, execution);
-	print_result(run, outcome, execution);
+	RunExec exec {tape.cells};
+	RunOutcome outcome = run_tm(tm->second, exec);
+	print_result(run, outcome, exec);
 }
 
 void Interpreter::visit(Composite_tm& stmt) {}

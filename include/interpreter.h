@@ -56,6 +56,8 @@ private:
 
 	void print_result(const Run& s, const RunOutcome& o, const RunExec& x);
 	RunOutcome run_tm(const TMachine& tm, RunExec& x);
+
+	void check_machine_name(const token& name);
 };
 
 //templated func to define things in the environment maps of the interpreter
