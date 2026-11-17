@@ -81,7 +81,7 @@ void Interpreter::visit(Transition_fun& s) {
 			throw RuntimeError(t.new_symbol, "'~' cannot be written.");
 
 		auto key = std::pair{t.state.lexeme, t.symbol.lexeme};
-		if (!d.emplace(key, Action{t.new_state.lexeme, t.new_symbol.lexeme, t.direction.type}).second)
+		if (!d.emplace(key, TmAction{t.new_state.lexeme, t.new_symbol.lexeme, t.direction.type}).second)
 			throw RuntimeError(t.state, "Duplicate transition for this (state, symbol).");
 	}
 	define(env.trans_funcs, s.name, std::move(d));
@@ -107,7 +107,7 @@ void Interpreter::visit(Turing_machine& s) {
 		}
         if (bad) throw RuntimeError(s.func, "Transition enters '" + act.next + "', which this machine does not declare.");
     }
-    define(env.machines, s.name, Machine{std::move(states), std::move(alpha), s.start.lexeme, &f->second, deciding});
+    define(env.machines, s.name, TMachine{std::move(states), std::move(alpha), s.start.lexeme, &f->second, deciding});
 }
 
 void Interpreter::visit(Tape_def& s) {
@@ -119,7 +119,7 @@ void Interpreter::visit(Tape_def& s) {
 		}
         cells.push_back(c.lexeme);
     }
-    define(env.tapes, s.name, std::move(cells));
+    define(env.tapes, s.name, Tape{std::move(alpha), std::move(cells)});
 }
 
 
@@ -138,11 +138,11 @@ void Interpreter::visit(Run& s) {
         throw RuntimeError(s.tape, "Undefined tape '" + s.tape.lexeme + "'.");
 	}
 
-    print_result(s, simulate(m->second, t->second));
+    print_result(s, simulate(m->second, t->second.cells));
 	// the tape is copied, so a declared tape can be reused
 }
 
-RunResult Interpreter::simulate(const Machine& tm, std::vector<Symbol> tape) {
+RunResult Interpreter::simulate(const TMachine& tm, std::vector<Symbol> tape) {
     State state = tm.start_state;
     size_t head = 1;
     int steps = 0;
@@ -151,10 +151,10 @@ RunResult Interpreter::simulate(const Machine& tm, std::vector<Symbol> tape) {
         if (steps == STEP_LIMIT) return {RunStatus::STEP_LIMIT, state, std::move(tape), head, steps};
         if (head == tape.size()) tape.push_back("#"); // unbounded to the right
 
-        Action a;
+        TmAction a;
         auto it = tm.deltas->find({state, tape[head]}); // look for the current state + symbol combo in the tmms deltas
         if (it != tm.deltas->end())  a = it->second; // succesfull find
-        else if (tape[head] == "~") a = Action{state, "~", RIGHT_ARROW};   // default ~ rule
+        else if (tape[head] == "~") a = TmAction{state, "~", RIGHT_ARROW};   // default ~ rule
         else return {RunStatus::STUCK, state, std::move(tape), head, steps}; // cant find
 
         tape[head] = a.write;

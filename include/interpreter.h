@@ -51,13 +51,14 @@ private:
 	const std::map<std::string, Set>* set_scope = nullptr;
 	Set eval_set(expr& e, const std::map<std::string, Set>& scope);
 
-	RunResult simulate(const Machine& m, std::vector<Symbol> tape);
+	RunResult simulate(const TMachine& m, std::vector<Symbol> tape);
 	void print_result(const Run& s, const RunResult& r);
 };
 
 //templated func to define things in the environment maps of the interpreter
 template <typename T>
 void define(std::map<std::string, T>& m, const token& name, T value) {
-    if (!m.emplace(name.lexeme, std::move(value)).second)
+    if (!m.emplace(name.lexeme, std::move(value)).second) {
         throw RuntimeError(name, "'" + name.lexeme + "' is already defined.");
+	}
 }
