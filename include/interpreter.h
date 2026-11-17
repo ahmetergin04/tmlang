@@ -15,12 +15,15 @@ struct RuntimeError : std::runtime_error {
 
 enum class RunStatus { HALTED, STUCK, STEP_LIMIT };
 
-struct RunResult {
+struct RunExec {
+    std::vector<Symbol> tape;
+    size_t head = 1;
+    int steps = 0;
+};
+
+struct RunOutcome {
     RunStatus status;
     State stop_state;
-    std::vector<Symbol> tape;
-    size_t head;
-    int steps;
 };
 
 class Interpreter : public Visitor {
@@ -51,8 +54,8 @@ private:
 	const std::map<std::string, Set>* set_scope = nullptr;
 	Set eval_set(expr& e, const std::map<std::string, Set>& scope);
 
-	RunResult simulate(const TMachine& m, std::vector<Symbol> tape);
-	void print_result(const Run& s, const RunResult& r);
+	void print_result(const Run& s, const RunOutcome& o, const RunExec& x);
+	RunOutcome run_tm(const TMachine& tm, RunExec& x);
 };
 
 //templated func to define things in the environment maps of the interpreter

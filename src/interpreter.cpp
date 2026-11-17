@@ -25,6 +25,73 @@ Set Interpreter::eval_set(expr& e, const std::map<std::string, Set>& scope) {
 	return std::move(set_result);
 }
 
+bool is_halt(const State& s) {
+	return s == "halt" || s == "halt_yes" || s == "halt_no"; 
+}
+
+void Interpreter::print_result(const Run& run, const RunOutcome& outcome, const RunExec& execution) {
+    std::cout << "run(" << run.machine.lexeme << ", " << run.tape.lexeme << "): ";
+    switch (outcome.status) {
+        case RunStatus::HALTED:     std::cout << outcome.stop_state << " after " << execution.steps << " steps\n"; break;
+        case RunStatus::STUCK:      std::cout << "stuck in stop_state " << outcome.stop_state << " reading " << execution.tape[execution.head]
+                                               << " after " << execution.steps << " steps\n"; break;
+        case RunStatus::STEP_LIMIT: std::cout << "did not halt within " << STEP_LIMIT
+                                               << " steps (stop_state " << outcome.stop_state << ")\n"; break;
+    }
+    // print up to the last non-blank cell or the head, whichever is further right
+    size_t end = execution.tape.size();
+    while (end > 0 && execution.tape[end - 1] == "#") --end;
+    end = std::max(end, execution.head + 1);
+    for (size_t i = 0; i < end; ++i) {
+        const Symbol& c = execution.tape[i];   // in range: move_right keeps head < tape.size()
+        std::cout << (i == execution.head ? "[" + c + "]" : c) << ' ';
+    }
+    std::cout << '\n';
+}
+
+void move_right(RunExec& x) {
+        ++x.head;
+        if (x.head == x.tape.size()) x.tape.push_back("#");
+}
+
+void move_left(RunExec& x) {
+        if (x.tape[x.head] == "~") move_right(x);   // built-in L on ~ moves right instead
+        else --x.head;
+}
+
+// run a tm from its start state, with whereever the head is
+RunOutcome Interpreter::run_tm(const TMachine& tm, RunExec& x) {
+	State state = tm.start_state;
+
+    while (!is_halt(state)) {
+        if (x.steps == STEP_LIMIT) return {RunStatus::STEP_LIMIT, state};
+
+		// look for the current state + symbol combo in the tmms deltas
+        TmAction a;
+        auto it = tm.deltas->find({state, x.tape[x.head]});
+
+        if (it != tm.deltas->end()) {
+			a = it->second; // succesful find
+		}
+        else if (x.tape[x.head] == "~") {
+		   a = TmAction{state, "~", RIGHT_ARROW};   // default ~ rule
+		}
+        else {
+			return {RunStatus::STUCK, state};
+		}
+
+        x.tape[x.head] = a.write;
+        if (a.action == RIGHT_ARROW) {
+			move_right(x);
+		}
+        else if (a.action == LEFT_ARROW) {
+			--x.head;   // never below 0: reading ~ always moves right
+		}
+        state = a.next;
+        ++x.steps;
+    }
+    return {RunStatus::HALTED, state};
+}
 
 void Interpreter::visit(Set_Literal& e) {
 	set_result.clear();
@@ -122,68 +189,20 @@ void Interpreter::visit(Tape_def& s) {
     define(env.tapes, s.name, Tape{std::move(alpha), std::move(cells)});
 }
 
-
-bool is_halt(const State& s) {
-	return s == "halt" || s == "halt_yes" || s == "halt_no"; 
-}
-
-void Interpreter::visit(Run& s) {
-    auto m = env.machines.find(s.machine.lexeme);
-    if (m == env.machines.end()) {     // later: also check env.ctms
-        throw RuntimeError(s.machine, "Undefined machine '" + s.machine.lexeme + "'.");
+void Interpreter::visit(Run& run) {
+    auto machine = env.machines.find(run.machine.lexeme);
+    if (machine == env.machines.end()) {     // later: also check env.ctms
+        throw RuntimeError(run.machine, "Undefined machine '" + run.machine.lexeme + "'.");
 	}
 
-    auto t = env.tapes.find(s.tape.lexeme);
-    if (t == env.tapes.end()) {
-        throw RuntimeError(s.tape, "Undefined tape '" + s.tape.lexeme + "'.");
+    auto tape = env.tapes.find(run.tape.lexeme);
+    if (tape == env.tapes.end()) {
+        throw RuntimeError(run.tape, "Undefined tape '" + run.tape.lexeme + "'.");
 	}
 
-    print_result(s, simulate(m->second, t->second.cells));
-	// the tape is copied, so a declared tape can be reused
-}
-
-RunResult Interpreter::simulate(const TMachine& tm, std::vector<Symbol> tape) {
-    State state = tm.start_state;
-    size_t head = 1;
-    int steps = 0;
-
-    while (!is_halt(state)) {
-        if (steps == STEP_LIMIT) return {RunStatus::STEP_LIMIT, state, std::move(tape), head, steps};
-        if (head == tape.size()) tape.push_back("#"); // unbounded to the right
-
-        TmAction a;
-        auto it = tm.deltas->find({state, tape[head]}); // look for the current state + symbol combo in the tmms deltas
-        if (it != tm.deltas->end())  a = it->second; // succesfull find
-        else if (tape[head] == "~") a = TmAction{state, "~", RIGHT_ARROW};   // default ~ rule
-        else return {RunStatus::STUCK, state, std::move(tape), head, steps}; // cant find
-
-        tape[head] = a.write;
-        if (a.action == RIGHT_ARROW) ++head;
-        else if (a.action == LEFT_ARROW) --head;      // never below 0: reading ~ always moves right
-        state = a.next;
-        ++steps;
-    }
-    return {RunStatus::HALTED, state, std::move(tape), head, steps};
-}
-
-void Interpreter::print_result(const Run& s, const RunResult& r) {
-    std::cout << "run(" << s.machine.lexeme << ", " << s.tape.lexeme << "): ";
-    switch (r.status) {
-        case RunStatus::HALTED:     std::cout << r.stop_state << " after " << r.steps << " steps\n"; break;
-        case RunStatus::STUCK:      std::cout << "stuck in stop_state " << r.stop_state << " reading " << r.tape[r.head]
-                                               << " after " << r.steps << " steps\n"; break;
-        case RunStatus::STEP_LIMIT: std::cout << "did not halt within " << STEP_LIMIT
-                                               << " steps (stop_state " << r.stop_state << ")\n"; break;
-    }
-    // print up to the last non-blank cell or the head, whichever is further right
-    size_t end = r.tape.size();
-    while (end > 0 && r.tape[end - 1] == "#") --end;
-    end = std::max(end, r.head + 1);
-    for (size_t i = 0; i < end; ++i) {
-        const Symbol& c = i < r.tape.size() ? r.tape[i] : "#";
-        std::cout << (i == r.head ? "[" + c + "]" : c) << ' ';
-    }
-    std::cout << '\n';
+	RunExec execution{tape->second.cells};
+	RunOutcome outcome = run_tm(machine->second, execution);
+	print_result(run, outcome, execution);
 }
 
 void Interpreter::visit(Composite_tm& stmt) {}
