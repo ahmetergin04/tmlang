@@ -27,7 +27,7 @@ enum class CtmActionType { MOVE_RIGHT, MOVE_LEFT, CALL_TM, CALL_CTM, WRITE, HALT
 
 struct CtmAction {
 	CtmActionType type;
-	std::string name;
+	std::string name; // only gets 'special' names in case of CALL_TM CALL_CTM and WRITE
 };
 
 struct CtmRow {

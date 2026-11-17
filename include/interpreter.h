@@ -50,14 +50,21 @@ private:
 	 
 	Environment& env;
 
-	Set set_result;
+	Set set_result; // helper member for the 3 different declaration methods of a set (state or alphabet)
 	const std::map<std::string, Set>* set_scope = nullptr;
+
+    // ctm conditions: current_head_symbol goes in, condition_result comes out
+    Symbol current_head_symbol;
+    bool condition_result = false;
+
 	Set eval_set(expr& e, const std::map<std::string, Set>& scope);
 
 	void print_result(const Run& s, const RunOutcome& o, const RunExec& x);
 	RunOutcome run_tm(const TMachine& tm, RunExec& x);
 
 	void check_machine_name(const token& name);
+    void check_condition_def(expr& condition, const Ctm& ctm); //ctm conditions to be evaluated
+    CtmAction resolve_action(const token& step, bool is_last, const Set& labels, const Ctm& ctm); //turns one chain item of a ctm in to a CtmAction object
 };
 
 //templated func to define things in the environment maps of the interpreter

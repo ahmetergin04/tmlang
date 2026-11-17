@@ -8,25 +8,25 @@
 static constexpr int STEP_LIMIT = 10000;
 
 void Interpreter::interpret(const std::vector<std::unique_ptr<stmt>>& statements) {
-	try {
-		for (const auto& s : statements) s->accept(*this);
-	} catch (const RuntimeError& e) {
-		report(e.tok.line, " at '" + e.tok.lexeme + "'", e.what());
-		had_runtime_error = true;
-	}
+    try {
+        for (const auto& s : statements) s->accept(*this);
+    } catch (const RuntimeError& e) {
+        report(e.tok.line, " at '" + e.tok.lexeme + "'", e.what());
+        had_runtime_error = true;
+    }
 }
 
 // set could be either state sets or alphabets so the caller will pass in the right map to differantiate
 Set Interpreter::eval_set(expr& e, const std::map<std::string, Set>& scope) {
-	auto saved = set_scope;
-	set_scope = &scope;
-	e.accept(*this);
-	set_scope = saved;
-	return std::move(set_result);
+    auto saved = set_scope;
+    set_scope = &scope;
+    e.accept(*this);
+    set_scope = saved;
+    return std::move(set_result);
 }
 
 bool is_halt(const State& s) {
-	return s == "halt" || s == "halt_yes" || s == "halt_no"; 
+    return s == "halt" || s == "halt_yes" || s == "halt_no"; 
 }
 
 void Interpreter::print_result(const Run& run, const RunOutcome& outcome, const RunExec& execution) {
@@ -34,9 +34,9 @@ void Interpreter::print_result(const Run& run, const RunOutcome& outcome, const 
     switch (outcome.status) {
         case RunStatus::HALTED:     std::cout << outcome.stop_state << " after " << execution.steps << " steps\n"; break;
         case RunStatus::STUCK:      std::cout << "stuck in stop_state " << outcome.stop_state << " reading " << execution.tape[execution.head]
-                                               << " after " << execution.steps << " steps\n"; break;
+            << " after " << execution.steps << " steps\n"; break;
         case RunStatus::STEP_LIMIT: std::cout << "did not halt within " << STEP_LIMIT
-                                               << " steps (stop_state " << outcome.stop_state << ")\n"; break;
+            << " steps (stop_state " << outcome.stop_state << ")\n"; break;
     }
     // print up to the last non-blank cell or the head, whichever is further right
     size_t end = execution.tape.size();
@@ -50,49 +50,49 @@ void Interpreter::print_result(const Run& run, const RunOutcome& outcome, const 
 }
 
 void move_right(RunExec& x) {
-        ++x.head;
-        if (x.head == x.tape.size()) x.tape.push_back("#");
+    ++x.head;
+    if (x.head == x.tape.size()) x.tape.push_back("#");
 }
 
 void move_left(RunExec& x) {
-        if (x.tape[x.head] == "~") move_right(x);   // built-in L on ~ moves right instead
-        else --x.head;
+    if (x.tape[x.head] == "~") move_right(x);   // built-in L on ~ moves right instead
+    else --x.head;
 }
 
 // helper to check for alphabet rules
 // a (= b
 bool subset(const Set& a, const Set& b) {
-        return std::includes(b.begin(), b.end(), a.begin(), a.end());
+    return std::includes(b.begin(), b.end(), a.begin(), a.end());
 }
 
 // run a tm from its start state, with whereever the head is
 RunOutcome Interpreter::run_tm(const TMachine& tm, RunExec& x) {
-	State state = tm.start_state;
+    State state = tm.start_state;
 
     while (!is_halt(state)) {
         if (x.steps == STEP_LIMIT) return {RunStatus::STEP_LIMIT, state};
 
-		// look for the current state + symbol combo in the tmms deltas
+        // look for the current state + symbol combo in the tmms deltas
         TmAction a;
         auto it = tm.deltas->find({state, x.tape[x.head]});
 
         if (it != tm.deltas->end()) {
-			a = it->second; // succesful find
-		}
+            a = it->second; // succesful find
+        }
         else if (x.tape[x.head] == "~") {
-		   a = TmAction{state, "~", RIGHT_ARROW};   // default ~ rule
-		}
+            a = TmAction{state, "~", RIGHT_ARROW};   // default ~ rule
+        }
         else {
-			return {RunStatus::STUCK, state};
-		}
+            return {RunStatus::STUCK, state};
+        }
 
         x.tape[x.head] = a.write;
         if (a.action == RIGHT_ARROW) {
-			move_right(x);
-		}
+            move_right(x);
+        }
         else if (a.action == LEFT_ARROW) {
-			--x.head;   // never below 0: reading ~ always moves right
-		}
+            --x.head;   // never below 0: reading ~ always moves right
+        }
         state = a.next;
         ++x.steps;
     }
@@ -100,94 +100,183 @@ RunOutcome Interpreter::run_tm(const TMachine& tm, RunExec& x) {
 }
 
 void Interpreter::check_machine_name(const token& name) {
-        if (name.lexeme == "R" || name.lexeme == "L")
-                throw RuntimeError(name, "'" + name.lexeme + "' is a built-in machine.");
-        if (env.machines.count(name.lexeme) || env.ctms.count(name.lexeme))
-                throw RuntimeError(name, "'" + name.lexeme + "' is already defined.");
+    if (name.lexeme == "R" || name.lexeme == "L")
+        throw RuntimeError(name, "'" + name.lexeme + "' is a built-in machine.");
+    if (env.machines.count(name.lexeme) || env.ctms.count(name.lexeme))
+        throw RuntimeError(name, "'" + name.lexeme + "' is already defined.");
+}
+
+// check if a ctm condition is valid
+void Interpreter::check_condition_def(expr& condition, const Ctm& ctm) {
+    if (auto* logical = dynamic_cast<Logical*>(&condition)) {
+        check_condition_def(*logical->left, ctm);
+        check_condition_def(*logical->right, ctm);
+    }
+    else if (auto* equality = dynamic_cast<Equality*>(&condition)) {
+        const token& symbol = equality->symbol;
+        if (symbol.type == BLANK) return;
+        if (ctm.any_alphabet) {
+            throw RuntimeError(symbol, "A '_' CTM can only compare the head with '#'.");
+        }
+        if (!ctm.alphabet.count(symbol.lexeme)) {
+            throw RuntimeError(symbol, "Symbol is not in the CTM's alphabet.");
+        }
+    }
+    else if (auto* membership = dynamic_cast<Membership*>(&condition)) {
+        if (ctm.any_alphabet) {
+            throw RuntimeError(membership->in, "A '_' CTM cannot use 'head in'.");
+        }
+        if (!subset(eval_set(*membership->set, env.alphabets), ctm.alphabet)) {
+            throw RuntimeError(membership->in, "Set is not a subset of the CTM's alphabet.");
+        }
+    }
+    // WildCard: always allowed
+}
+
+// the last token of a ctm action chain must be another row of the ctm or halt
+// before that it can be write, built in (L or R), a ctm or a tm
+CtmAction Interpreter::resolve_action(const token& step, bool is_last, const Set& labels, const Ctm& ctm) {
+    switch (step.type) {
+        case HALT: case HALT_YES: case HALT_NO: //last step halt
+            if (!is_last) {
+                throw RuntimeError(step, "A halt state must be the last step of a chain.");
+            }
+            return {CtmActionType::HALT, step.lexeme};
+
+        case STRING: case BLANK: case BLIP: // write action
+            if (step.type != BLANK) {
+                if (ctm.any_alphabet) {
+                    throw RuntimeError(step, "A '_' CTM can only write '#'.");
+                }
+                if (!ctm.alphabet.count(step.lexeme)) {
+                    throw RuntimeError(step, "Written symbol is not in the CTM's alphabet.");
+                }
+            }
+            return {CtmActionType::WRITE, step.lexeme};
+
+        default:
+            break;   // IDENTIFIER: handled below
+    }
+
+    const std::string& name = step.lexeme;
+
+    if (labels.count(name)) {
+        if (!is_last) {
+            throw RuntimeError(step, "A row label must be the last step of a chain.");
+        }
+        return {CtmActionType::GOTO, name}; // last step another row
+    }
+
+    if (name == "R") return {CtmActionType::MOVE_RIGHT, name}; // built-in actions
+    if (name == "L") return {CtmActionType::MOVE_LEFT, name};
+
+    if (auto found_tm = env.machines.find(name); found_tm != env.machines.end()) { // call tm
+        if (ctm.any_alphabet) {
+            throw RuntimeError(step, "A '_' CTM can only call R, L and other '_' CTMs.");
+        }
+        if (!subset(ctm.alphabet, found_tm->second.alphabet)) {
+            throw RuntimeError(step, "The CTM's alphabet is not a subset of the alphabet of '" + name + "'.");
+        }
+        return {CtmActionType::CALL_TM, name};
+    }
+
+    if (auto found_ctm = env.ctms.find(name); found_ctm != env.ctms.end()) { // call ctm
+        if (!found_ctm->second.any_alphabet) {
+            if (ctm.any_alphabet) {
+                throw RuntimeError(step, "A '_' CTM can only call R, L and other '_' CTMs.");
+            }
+            if (!subset(ctm.alphabet, found_ctm->second.alphabet)) {
+                throw RuntimeError(step, "The CTM's alphabet is not a subset of the alphabet of '" + name + "'.");
+            }
+        }
+        return {CtmActionType::CALL_CTM, name};
+    }
+
+    throw RuntimeError(step, "Undefined machine or row label '" + name + "'.");
 }
 
 void Interpreter::visit(Set_Literal& set) {
-	set_result.clear();
-	for (const token& t : set.items) set_result.insert(t.lexeme);
+    set_result.clear();
+    for (const token& t : set.items) set_result.insert(t.lexeme);
 }
 
 void Interpreter::visit(Set_Ref& set) {
-	auto it = set_scope->find(set.name.lexeme);
-	if (it == set_scope->end()) {
-		throw RuntimeError(set.name, "Undefined set '" + set.name.lexeme + "'.");
-	}
-	set_result = it->second;
+    auto it = set_scope->find(set.name.lexeme);
+    if (it == set_scope->end()) {
+        throw RuntimeError(set.name, "Undefined set '" + set.name.lexeme + "'.");
+    }
+    set_result = it->second;
 }
 
 void Interpreter::visit(Set_Binary& set) {
-	Set l = eval_set(*set.left,  *set_scope);
-	Set r = eval_set(*set.right, *set_scope);
-	Set out;
-	if (set.op.type == UNION) {
-		std::set_union(l.begin(), l.end(), r.begin(), r.end(), std::inserter(out, out.end()));
-	}
-	else {
-		std::set_difference(l.begin(), l.end(), r.begin(), r.end(), std::inserter(out, out.end()));
-	}
-	set_result = std::move(out);
+    Set l = eval_set(*set.left,  *set_scope);
+    Set r = eval_set(*set.right, *set_scope);
+    Set out;
+    if (set.op.type == UNION) {
+        std::set_union(l.begin(), l.end(), r.begin(), r.end(), std::inserter(out, out.end()));
+    }
+    else {
+        std::set_difference(l.begin(), l.end(), r.begin(), r.end(), std::inserter(out, out.end()));
+    }
+    set_result = std::move(out);
 }
 
 void Interpreter::visit(Alphabet_def& alp_def)  {
-	define(env.alphabets,  alp_def.name, eval_set(*alp_def.symbols, env.alphabets));
+    define(env.alphabets,  alp_def.name, eval_set(*alp_def.symbols, env.alphabets));
 }
 
 void Interpreter::visit(State_set_def& state_set_def) {
-	define(env.state_sets, state_set_def.name, eval_set(*state_set_def.states,  env.state_sets));
+    define(env.state_sets, state_set_def.name, eval_set(*state_set_def.states,  env.state_sets));
 }
 
 void Interpreter::visit(Transition_fun& t_func) {
-	Set states = eval_set(*t_func.states,   env.state_sets);
-	Set alpha  = eval_set(*t_func.alphabet, env.alphabets);
-	auto is_symbol = [&](const token& t) {
-		return t.type == BLANK || t.type == BLIP || alpha.count(t.lexeme);
-	};
+    Set states = eval_set(*t_func.states,   env.state_sets);
+    Set alpha  = eval_set(*t_func.alphabet, env.alphabets);
+    auto is_symbol = [&](const token& t) {
+        return t.type == BLANK || t.type == BLIP || alpha.count(t.lexeme);
+    };
 
-	Deltas d;
-	for (const Transition& t : t_func.transitions) {
-		if (!states.count(t.state.lexeme))
-			throw RuntimeError(t.state, "State is not in the state set.");
-		if (!is_symbol(t.symbol) || !is_symbol(t.new_symbol))
-			throw RuntimeError(t.symbol, "Symbol is not in the alphabet.");
-		if (t.new_state.type == STRING && !states.count(t.new_state.lexeme))
-			throw RuntimeError(t.new_state, "Next state is not in the state set.");
-		if (t.symbol.type == BLIP && (t.new_symbol.type != BLIP || t.direction.type != RIGHT_ARROW))
-			throw RuntimeError(t.symbol, "Reading '~' must write '~' and move '->'.");
-		if (t.symbol.type != BLIP && t.new_symbol.type == BLIP)
-			throw RuntimeError(t.new_symbol, "'~' cannot be written.");
+    Deltas d;
+    for (const Transition& t : t_func.transitions) {
+        if (!states.count(t.state.lexeme))
+            throw RuntimeError(t.state, "State is not in the state set.");
+        if (!is_symbol(t.symbol) || !is_symbol(t.new_symbol))
+            throw RuntimeError(t.symbol, "Symbol is not in the alphabet.");
+        if (t.new_state.type == STRING && !states.count(t.new_state.lexeme))
+            throw RuntimeError(t.new_state, "Next state is not in the state set.");
+        if (t.symbol.type == BLIP && (t.new_symbol.type != BLIP || t.direction.type != RIGHT_ARROW))
+            throw RuntimeError(t.symbol, "Reading '~' must write '~' and move '->'.");
+        if (t.symbol.type != BLIP && t.new_symbol.type == BLIP)
+            throw RuntimeError(t.new_symbol, "'~' cannot be written.");
 
-		auto key = std::pair{t.state.lexeme, t.symbol.lexeme};
-		if (!d.emplace(key, TmAction{t.new_state.lexeme, t.new_symbol.lexeme, t.direction.type}).second)
-			throw RuntimeError(t.state, "Duplicate transition for this (state, symbol).");
-	}
-	define(env.trans_funcs, t_func.name, std::move(d));
+        auto key = std::pair{t.state.lexeme, t.symbol.lexeme};
+        if (!d.emplace(key, TmAction{t.new_state.lexeme, t.new_symbol.lexeme, t.direction.type}).second)
+            throw RuntimeError(t.state, "Duplicate transition for this (state, symbol).");
+    }
+    define(env.trans_funcs, t_func.name, std::move(d));
 }
 
 void Interpreter::visit(Turing_machine& tm) {
-	check_machine_name(tm.name);
+    check_machine_name(tm.name);
     Set states = eval_set(*tm.states,   env.state_sets);
     Set alpha  = eval_set(*tm.alphabet, env.alphabets);
     if (!states.count(tm.start.lexeme)) {
         throw RuntimeError(tm.start, "Start state is not in the state set.");
-	}
+    }
 
     auto f = env.trans_funcs.find(tm.func.lexeme);
     if (f == env.trans_funcs.end()) {
         throw RuntimeError(tm.func, "Undefined transition function '" + tm.func.lexeme + "'.");
-	}
+    }
 
     bool deciding = tm.final_state.state.size() == 2;   // {halt_yes, halt_no}
     for (const auto& [key, act] : f->second) { //loop through the deltas of the machine
-		bool bad = false;
-		if (deciding) {
-			bad = act.next == "halt";
-		} else {
-			bad = (act.next == "halt_yes" || act.next == "halt_no");
-		}
+        bool bad = false;
+        if (deciding) {
+            bad = act.next == "halt";
+        } else {
+            bad = (act.next == "halt_yes" || act.next == "halt_no");
+        }
         if (bad) throw RuntimeError(tm.func, "Transition enters '" + act.next + "', which this machine does not declare.");
     }
     define(env.machines, tm.name, TMachine{std::move(states), std::move(alpha), tm.start.lexeme, &f->second, deciding});
@@ -199,35 +288,93 @@ void Interpreter::visit(Tape_def& tape_def) {
     for (const token& c : tape_def.cells) {
         if (c.type == STRING && !alpha.count(c.lexeme)) {
             throw RuntimeError(c, "Tape symbol is not in the alphabet.");
-		}
+        }
         cells.push_back(c.lexeme);
     }
     define(env.tapes, tape_def.name, Tape{std::move(alpha), std::move(cells)});
 }
 
 void Interpreter::visit(Run& run) {
-	auto t = env.tapes.find(run.tape.lexeme);
-	if (t == env.tapes.end()) {
-		throw RuntimeError(run.tape, "Undefined tape '" + run.tape.lexeme + "'.");
-	}
-	const Tape& tape = t->second;
+    auto t = env.tapes.find(run.tape.lexeme);
+    if (t == env.tapes.end()) {
+        throw RuntimeError(run.tape, "Undefined tape '" + run.tape.lexeme + "'.");
+    }
+    const Tape& tape = t->second;
 
-	auto tm = env.machines.find(run.machine.lexeme);
-	if (tm == env.machines.end()) {
-		throw RuntimeError(run.machine, "Undefined machine '" + run.machine.lexeme + "'.");
-	}
+    auto tm = env.machines.find(run.machine.lexeme);
+    if (tm == env.machines.end()) {
+        throw RuntimeError(run.machine, "Undefined machine '" + run.machine.lexeme + "'.");
+    }
 
-	if (!subset(tape.alphabet, tm->second.alphabet)) {
+    if (!subset(tape.alphabet, tm->second.alphabet)) {
         throw RuntimeError(run.tape, "The tape's alphabet is not a subset of the alphabet of '" + run.machine.lexeme + "'.");
-	}
+    }
 
-	RunExec exec {tape.cells};
-	RunOutcome outcome = run_tm(tm->second, exec);
-	print_result(run, outcome, exec);
+    RunExec exec {tape.cells};
+    RunOutcome outcome = run_tm(tm->second, exec);
+    print_result(run, outcome, exec);
 }
 
-void Interpreter::visit(Composite_tm& stmt) {}
-void Interpreter::visit(WildCard& expr) {}
-void Interpreter::visit(Logical& expr) {}
-void Interpreter::visit(Membership& expr) {}
-void Interpreter::visit(Equality& expr) {}
+// defining a ctm in the environment
+void Interpreter::visit(Composite_tm& ctm_def) {
+    check_machine_name(ctm_def.name);
+
+    Ctm ctm;
+    ctm.any_alphabet = ctm_def.alphabet == nullptr;
+    if (!ctm.any_alphabet) {
+        ctm.alphabet = eval_set(*ctm_def.alphabet, env.alphabets);
+    }
+
+    Set labels;
+    for (const Ctm_row& ast_row : ctm_def.rows) {
+        if (ast_row.state.type != IDENTIFIER) continue; // the > row
+        const std::string& label = ast_row.state.lexeme;
+        if (label == "R" || label == "L" || env.machines.count(label) || env.ctms.count(label)) {
+            throw RuntimeError(ast_row.state, "Row label '" + label + "' has the same name as a machine.");
+        }
+        labels.insert(label);
+    }
+
+    for (Ctm_row& ast_row : ctm_def.rows) {
+        check_condition_def(*ast_row.condition, ctm);
+
+        CtmRow row{ast_row.state.lexeme, ast_row.condition.get(), {}};
+        for (size_t i = 0; i < ast_row.next_tm.size(); ++i) {
+            bool is_last = (i + 1 == ast_row.next_tm.size());
+            row.chain.push_back(resolve_action(ast_row.next_tm[i], is_last, labels, ctm));
+        }
+
+        CtmActionType end_type = row.chain.back().type;
+        if (end_type != CtmActionType::HALT && end_type != CtmActionType::GOTO) {
+            throw RuntimeError(ast_row.next_tm.back(), "A chain must end with a halt state or a row label.");
+        }
+        ctm.rows.push_back(std::move(row));
+    }
+
+    define(env.ctms, ctm_def.name, std::move(ctm));
+}
+
+// _ in the > row: always true
+void Interpreter::visit(WildCard& wildcard) {
+    condition_result = true;
+}
+
+void Interpreter::visit(Equality& equality) {
+    bool head_matches = (current_head_symbol == equality.symbol.lexeme);
+    bool is_equal_op  = (equality.op.type == EQUAL_EQUAL);
+    condition_result  = (head_matches == is_equal_op);
+}
+
+void Interpreter::visit(Membership& membership) {
+    Set symbols = eval_set(*membership.set, env.alphabets);
+    condition_result = symbols.count(current_head_symbol) > 0;
+}
+
+void Interpreter::visit(Logical& logical) {
+    logical.left->accept(*this);
+    bool left_result = condition_result;
+
+    if (logical.op.type == OR ? left_result : !left_result) return;
+
+    logical.right->accept(*this);
+}
