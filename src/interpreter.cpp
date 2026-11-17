@@ -66,37 +66,112 @@ bool subset(const Set& a, const Set& b) {
 }
 
 // run a tm from its start state, with whereever the head is
-RunOutcome Interpreter::run_tm(const TMachine& tm, RunExec& x) {
+RunOutcome Interpreter::run_tm(const TMachine& tm, RunExec& exec) {
     State state = tm.start_state;
 
     while (!is_halt(state)) {
-        if (x.steps == STEP_LIMIT) return {RunStatus::STEP_LIMIT, state};
+        if (exec.steps == STEP_LIMIT) return {RunStatus::STEP_LIMIT, state};
 
         // look for the current state + symbol combo in the tmms deltas
         TmAction a;
-        auto it = tm.deltas->find({state, x.tape[x.head]});
+        auto it = tm.deltas->find({state, exec.tape[exec.head]});
 
         if (it != tm.deltas->end()) {
             a = it->second; // succesful find
         }
-        else if (x.tape[x.head] == "~") {
+        else if (exec.tape[exec.head] == "~") {
             a = TmAction{state, "~", RIGHT_ARROW};   // default ~ rule
         }
         else {
             return {RunStatus::STUCK, state};
         }
 
-        x.tape[x.head] = a.write;
+        exec.tape[exec.head] = a.write;
         if (a.action == RIGHT_ARROW) {
-            move_right(x);
+            move_right(exec);
         }
         else if (a.action == LEFT_ARROW) {
-            --x.head;   // never below 0: reading ~ always moves right
+            --exec.head;   // never below 0: reading ~ always moves right
         }
         state = a.next;
-        ++x.steps;
+        ++exec.steps;
     }
     return {RunStatus::HALTED, state};
+}
+
+// the first row with this label whose condition holds for the symbol under the head
+const CtmRow* Interpreter::pick_row(const Ctm& ctm, const std::string& label, const RunExec& exec) {
+    current_head_symbol = exec.tape[exec.head];   // input for the condition visitors
+
+    for (const CtmRow& row : ctm.rows) {
+        if (row.label != label) continue;
+        row.condition->accept(*this);             // writes condition_result
+        if (condition_result) return &row;
+    }
+    return nullptr;
+}
+
+// runs a ctm: execute the > row's chain, then keep jumping to rows by label
+RunOutcome Interpreter::run_ctm(const Ctm& ctm, RunExec& exec) {
+    const CtmRow* row = &ctm.rows[0];   // the > row: the parser puts it first, and its condition is _
+
+    while (true) {
+        for (const CtmAction& action : row->chain) {
+            if (exec.steps == STEP_LIMIT) {
+                return {RunStatus::STEP_LIMIT, row->label};
+            }
+
+            switch (action.type) {
+                case CtmActionType::MOVE_RIGHT:
+                    move_right(exec);
+                    ++exec.steps;
+                    break;
+
+                case CtmActionType::MOVE_LEFT:
+                    move_left(exec);
+                    ++exec.steps;
+                    break;
+
+                case CtmActionType::WRITE:
+                    if (exec.tape[exec.head] == "~") {
+                        return {RunStatus::STUCK, row->label};   // ~ can never be overwritten
+                    }
+                    exec.tape[exec.head] = action.name;
+                    ++exec.steps;
+                    break;
+
+                case CtmActionType::CALL_TM: {
+                    RunOutcome called_outcome = run_tm(env.machines.at(action.name), exec);
+                    if (called_outcome.status != RunStatus::HALTED) {
+                        return called_outcome;   // stuck or step limit inside the tm ends the whole run
+                    }
+                    break;                       // any halt state: continue the chain
+                }
+
+                case CtmActionType::CALL_CTM: {
+                    RunOutcome called_outcome = run_ctm(env.ctms.at(action.name), exec);
+                    if (called_outcome.status != RunStatus::HALTED) {
+                        return called_outcome;
+                    }
+                    break;
+                }
+
+                case CtmActionType::HALT:
+                    return {RunStatus::HALTED, action.name};
+
+                case CtmActionType::GOTO:
+                    ++exec.steps;   // counts as a step, so (A, head == #, A) still hits the limit
+                    break;
+            }
+        }
+
+        // the chain did not halt, so its last action is a GOTO (guaranteed by visit(Composite_tm&))
+        const std::string& next_label = row->chain.back().name;
+        row = pick_row(ctm, next_label, exec);
+        if (row == nullptr) {
+            return {RunStatus::STUCK, next_label};   // no row of this label matches the head symbol
+        }
+    }
 }
 
 void Interpreter::check_machine_name(const token& name) {
@@ -301,17 +376,26 @@ void Interpreter::visit(Run& run) {
     }
     const Tape& tape = t->second;
 
-    auto tm = env.machines.find(run.machine.lexeme);
-    if (tm == env.machines.end()) {
+    RunExec exec {tape.cells};   // a copy: the declared tape can be reused
+    RunOutcome outcome;
+
+    if (auto found_tm = env.machines.find(run.machine.lexeme); found_tm != env.machines.end()) {
+        if (!subset(tape.alphabet, found_tm->second.alphabet)) {
+            throw RuntimeError(run.tape, "The tape's alphabet is not a subset of the alphabet of '" + run.machine.lexeme + "'.");
+        }
+        outcome = run_tm(found_tm->second, exec);
+    }
+    else if (auto found_ctm = env.ctms.find(run.machine.lexeme); found_ctm != env.ctms.end()) {
+        const Ctm& ctm = found_ctm->second;
+        if (!ctm.any_alphabet && !subset(tape.alphabet, ctm.alphabet)) {
+            throw RuntimeError(run.tape, "The tape's alphabet is not a subset of the alphabet of '" + run.machine.lexeme + "'.");
+        }
+        outcome = run_ctm(ctm, exec);
+    }
+    else {
         throw RuntimeError(run.machine, "Undefined machine '" + run.machine.lexeme + "'.");
     }
 
-    if (!subset(tape.alphabet, tm->second.alphabet)) {
-        throw RuntimeError(run.tape, "The tape's alphabet is not a subset of the alphabet of '" + run.machine.lexeme + "'.");
-    }
-
-    RunExec exec {tape.cells};
-    RunOutcome outcome = run_tm(tm->second, exec);
     print_result(run, outcome, exec);
 }
 

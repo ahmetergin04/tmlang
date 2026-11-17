@@ -57,11 +57,14 @@ private:
     Symbol current_head_symbol;
     bool condition_result = false;
 
-	Set eval_set(expr& e, const std::map<std::string, Set>& scope);
+    RunOutcome run_tm(const TMachine& tm, RunExec& exec);
+    RunOutcome run_ctm(const Ctm& ctm, RunExec& exec);
 
 	void print_result(const Run& s, const RunOutcome& o, const RunExec& x);
-	RunOutcome run_tm(const TMachine& tm, RunExec& x);
 
+    // helpers
+	Set eval_set(expr& e, const std::map<std::string, Set>& scope);
+    const CtmRow* pick_row(const Ctm& ctm, const std::string& label, const RunExec& exec);
 	void check_machine_name(const token& name);
     void check_condition_def(expr& condition, const Ctm& ctm); //ctm conditions to be evaluated
     CtmAction resolve_action(const token& step, bool is_last, const Set& labels, const Ctm& ctm); //turns one chain item of a ctm in to a CtmAction object
