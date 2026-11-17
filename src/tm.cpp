@@ -25,6 +25,10 @@ void run(std::string& source){
 		//   }
 	Interpreter interpreter(global_env);
 	interpreter.interpret(statements);
+	// TODO: keep the AST alive for the REPL. CtmRow::condition is a raw expr* into
+	// `statements`, which is freed when run() returns, so a CTM declared on one REPL
+	// line and run on a later one uses a dangling pointer. Fix: move the statements
+	// into a global std::vector<std::unique_ptr<stmt>> program after interpreting.
 }
 
 void run_file(const std::string& path) {
@@ -50,6 +54,7 @@ void run_prompt() {
         else{break;}
 
         had_error = false;
+        had_runtime_error = false;
     }
 }
 

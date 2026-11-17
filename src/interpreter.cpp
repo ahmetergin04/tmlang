@@ -11,8 +11,7 @@ void Interpreter::interpret(const std::vector<std::unique_ptr<stmt>>& statements
     try {
         for (const auto& s : statements) s->accept(*this);
     } catch (const RuntimeError& e) {
-        report(e.tok.line, " at '" + e.tok.lexeme + "'", e.what());
-        had_runtime_error = true;
+        runtime_error_report(e.tok.line, " at '" + e.tok.lexeme + "'", e.what());
     }
 }
 
