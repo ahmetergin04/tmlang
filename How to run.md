@@ -31,5 +31,22 @@ On Windows use `build.bat`.
 ## Usage
 
 ```sh
-tmlang [script]
+tmlang [-printMachineTrace] [script]
+```
+
+### Flags
+
+| Flag | Effect |
+|---|---|
+| `-printMachineTrace` | After each `run`, prints a tree of every TM/CTM call: how each call ended, how many steps it took, and the tape after it returned. Built-in `R`/`L` and writes are not calls, so they are not shown. |
+
+Example (`tests/test_ctm.tm`):
+
+```
+run(reset_nines, t_nums): halt after 20 steps
+~ [#] "2" "1" "1"
+`-- reset_nines (ctm): halt after 20 steps  |  ~ [#] "2" "1" "1"
+    `-- bump_all (ctm): halt_yes after 10 steps  |  ~ # "2" "9" "9" [#]
+        |-- Bump (tm): halt after 1 steps  |  ~ # ["2"] "9" "3"
+        `-- Bump (tm): halt after 1 steps  |  ~ # "2" "9" ["9"]
 ```

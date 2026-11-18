@@ -26,9 +26,20 @@ struct RunOutcome {
     State stop_state;
 };
 
+// command line flags that change what the interpreter prints
+struct InterpreterOptions {
+    bool print_machine_trace = false;   // -printMachineTrace
+};
+
+// one machine call in the trace tree; children are the calls it made
+struct TraceNode {
+    std::string text;                  // the printed line, filled in when the call returns
+    std::vector<TraceNode> children;
+};
+
 class Interpreter : public Visitor {
 public:
-	Interpreter(Environment& env) : env(env) {}
+	Interpreter(Environment& env, InterpreterOptions options = {}) : env(env), options(options) {}
 	void interpret(const std::vector<std::unique_ptr<stmt>>& statements);
 
 private:
@@ -49,6 +60,10 @@ private:
 	void visit(Run& stmt) override;
 	 
 	Environment& env;
+	InterpreterOptions options;
+
+	// the node that calls made right now attach under (only used while tracing)
+	TraceNode* current_trace = nullptr;
 
 	Set set_result; // helper member for the 3 different declaration methods of a set (state or alphabet)
 	const std::map<std::string, Set>* set_scope = nullptr;
@@ -59,8 +74,10 @@ private:
 
     RunOutcome run_tm(const TMachine& tm, RunExec& exec);
     RunOutcome run_ctm(const Ctm& ctm, RunExec& exec);
+    RunOutcome call_machine(const std::string& name, RunExec& exec); // runs a tm or ctm by name, recording it in the trace
 
 	void print_result(const Run& s, const RunOutcome& o, const RunExec& x);
+	void print_trace(const TraceNode& node, const std::string& prefix, bool is_last);
 
     // helpers
 	Set eval_set(expr& e, const std::map<std::string, Set>& scope);

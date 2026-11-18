@@ -28,24 +28,69 @@ bool is_halt(const State& s) {
     return s == "halt" || s == "halt_yes" || s == "halt_no"; 
 }
 
-void Interpreter::print_result(const Run& run, const RunOutcome& outcome, const RunExec& execution) {
-    std::cout << "run(" << run.machine.lexeme << ", " << run.tape.lexeme << "): ";
-    switch (outcome.status) {
-        case RunStatus::HALTED:     std::cout << outcome.stop_state << " after " << execution.steps << " steps\n"; break;
-        case RunStatus::STUCK:      std::cout << "stuck in stop_state " << outcome.stop_state << " reading " << execution.tape[execution.head]
-            << " after " << execution.steps << " steps\n"; break;
-        case RunStatus::STEP_LIMIT: std::cout << "did not halt within " << STEP_LIMIT
-            << " steps (stop_state " << outcome.stop_state << ")\n"; break;
-    }
-    // print up to the last non-blank cell or the head, whichever is further right
+// the tape up to the last non-blank cell or the head, whichever is further right, head in [ ]
+std::string format_tape(const RunExec& execution) {
     size_t end = execution.tape.size();
     while (end > 0 && execution.tape[end - 1] == "#") --end;
     end = std::max(end, execution.head + 1);
+    std::string text;
     for (size_t i = 0; i < end; ++i) {
-        const Symbol& c = execution.tape[i];   // in range: move_right keeps head < tape.size()
-        std::cout << (i == execution.head ? "[" + c + "]" : c) << ' ';
+        const Symbol& cell = execution.tape[i];   // in range: move_right keeps head < tape.size()
+        text += (i == execution.head ? "[" + cell + "]" : cell) + ' ';
     }
-    std::cout << '\n';
+    return text;
+}
+
+// how a run ended, e.g. "halt after 4 steps"; steps is passed in because a call's own step count differs from the run's
+std::string format_outcome(const RunOutcome& outcome, const RunExec& execution, int steps) {
+    switch (outcome.status) {
+        case RunStatus::HALTED:
+            return outcome.stop_state + " after " + std::to_string(steps) + " steps";
+        case RunStatus::STUCK:
+            return "stuck in stop_state " + outcome.stop_state + " reading " + execution.tape[execution.head]
+                + " after " + std::to_string(steps) + " steps";
+        case RunStatus::STEP_LIMIT:
+            return "did not halt within " + std::to_string(STEP_LIMIT) + " steps (stop_state " + outcome.stop_state + ")";
+    }
+    return "";
+}
+
+void Interpreter::print_result(const Run& run, const RunOutcome& outcome, const RunExec& execution) {
+    std::cout << "run(" << run.machine.lexeme << ", " << run.tape.lexeme << "): "
+              << format_outcome(outcome, execution, execution.steps) << '\n'
+              << format_tape(execution) << '\n';
+}
+
+// prints one node and its children as an ascii tree
+void Interpreter::print_trace(const TraceNode& node, const std::string& prefix, bool is_last) {
+    std::cout << prefix << (is_last ? "`-- " : "|-- ") << node.text << '\n';
+    std::string child_prefix = prefix + (is_last ? "    " : "|   ");
+    for (size_t i = 0; i < node.children.size(); ++i) {
+        print_trace(node.children[i], child_prefix, i + 1 == node.children.size());
+    }
+}
+
+// every machine call (from run or from a ctm chain) goes through here so the trace sees it
+RunOutcome Interpreter::call_machine(const std::string& name, RunExec& exec) {
+    bool is_ctm = env.ctms.count(name) > 0;
+    auto run_machine = [&] {
+        return is_ctm ? run_ctm(env.ctms.at(name), exec) : run_tm(env.machines.at(name), exec);
+    };
+    if (!options.print_machine_trace) return run_machine();
+
+    // the parent's children only grow after this call returns, so this reference stays valid
+    TraceNode& node = current_trace->children.emplace_back();
+    int steps_before = exec.steps;
+
+    TraceNode* parent = current_trace;
+    current_trace = &node;            // calls made inside this machine attach under it
+    RunOutcome outcome = run_machine();
+    current_trace = parent;
+
+    node.text = name + (is_ctm ? " (ctm): " : " (tm): ")
+        + format_outcome(outcome, exec, exec.steps - steps_before)
+        + "  |  " + format_tape(exec);
+    return outcome;
 }
 
 void move_right(RunExec& x) {
@@ -139,20 +184,13 @@ RunOutcome Interpreter::run_ctm(const Ctm& ctm, RunExec& exec) {
                     ++exec.steps;
                     break;
 
-                case CtmActionType::CALL_TM: {
-                    RunOutcome called_outcome = run_tm(env.machines.at(action.name), exec);
+                case CtmActionType::CALL_TM:
+                case CtmActionType::CALL_CTM: {
+                    RunOutcome called_outcome = call_machine(action.name, exec);
                     if (called_outcome.status != RunStatus::HALTED) {
-                        return called_outcome;   // stuck or step limit inside the tm ends the whole run
+                        return called_outcome;   // stuck or step limit inside the called machine ends the whole run
                     }
                     break;                       // any halt state: continue the chain
-                }
-
-                case CtmActionType::CALL_CTM: {
-                    RunOutcome called_outcome = run_ctm(env.ctms.at(action.name), exec);
-                    if (called_outcome.status != RunStatus::HALTED) {
-                        return called_outcome;
-                    }
-                    break;
                 }
 
                 case CtmActionType::HALT:
@@ -376,26 +414,31 @@ void Interpreter::visit(Run& run) {
     const Tape& tape = t->second;
 
     RunExec exec {tape.cells};   // a copy: the declared tape can be reused
-    RunOutcome outcome;
 
     if (auto found_tm = env.machines.find(run.machine.lexeme); found_tm != env.machines.end()) {
         if (!subset(tape.alphabet, found_tm->second.alphabet)) {
             throw RuntimeError(run.tape, "The tape's alphabet is not a subset of the alphabet of '" + run.machine.lexeme + "'.");
         }
-        outcome = run_tm(found_tm->second, exec);
     }
     else if (auto found_ctm = env.ctms.find(run.machine.lexeme); found_ctm != env.ctms.end()) {
         const Ctm& ctm = found_ctm->second;
         if (!ctm.any_alphabet && !subset(tape.alphabet, ctm.alphabet)) {
             throw RuntimeError(run.tape, "The tape's alphabet is not a subset of the alphabet of '" + run.machine.lexeme + "'.");
         }
-        outcome = run_ctm(ctm, exec);
     }
     else {
         throw RuntimeError(run.machine, "Undefined machine '" + run.machine.lexeme + "'.");
     }
 
+    TraceNode trace_root;            // holds the top-level call
+    current_trace = &trace_root;
+    RunOutcome outcome = call_machine(run.machine.lexeme, exec);
+    current_trace = nullptr;
+
     print_result(run, outcome, exec);
+    if (options.print_machine_trace) {
+        print_trace(trace_root.children.front(), "", true);
+    }
 }
 
 // defining a ctm in the environment
