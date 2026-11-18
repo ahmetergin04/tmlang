@@ -28,12 +28,15 @@ struct RunOutcome {
 
 // command line flags that change what the interpreter prints
 struct InterpreterOptions {
-    bool print_machine_trace = false;   // -printMachineTrace
+    bool print_machine_trace = false;      // -printMachineTrace
+    bool print_transition_trace = false;   // -printTransitionTrace (also records the calls, as the tree's inner nodes)
+    bool tracing() const { return print_machine_trace || print_transition_trace; }
 };
 
-// one machine call in the trace tree; children are the calls it made
+// a machine call or (with -printTransitionTrace) a single transition in the trace tree;
+// only calls have children: the calls and transitions made inside them
 struct TraceNode {
-    std::string text;                  // the printed line, filled in when the call returns
+    std::string text;                  // the printed line; for a call, filled in when it returns
     std::vector<TraceNode> children;
 };
 
@@ -78,6 +81,7 @@ private:
 
 	void print_result(const Run& s, const RunOutcome& o, const RunExec& x);
 	void print_trace(const TraceNode& node, const std::string& prefix, bool is_last);
+	void record_transition(const std::string& description, const RunExec& exec); // adds a leaf under the current call
 
     // helpers
 	Set eval_set(expr& e, const std::map<std::string, Set>& scope);

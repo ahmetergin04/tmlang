@@ -31,7 +31,7 @@ On Windows use `build.bat`.
 ## Usage
 
 ```sh
-tmlang [-printMachineTrace] [script]
+tmlang [-printMachineTrace] [-printTransitionTrace] [script]
 ```
 
 ### Flags
@@ -49,4 +49,14 @@ run(reset_nines, t_nums): halt after 20 steps
     `-- bump_all (ctm): halt_yes after 10 steps  |  ~ # "2" "9" "9" [#]
         |-- Bump (tm): halt after 1 steps  |  ~ # ["2"] "9" "3"
         `-- Bump (tm): halt after 1 steps  |  ~ # "2" "9" ["9"]
+```
+
+`-printTransitionTrace` prints the same tree, plus one line per step under the call that made it, with the tape after that step. TM steps are written like transitions in the language; CTM steps are `R`, `L`, `write <symbol>` and `goto <label>: row <condition>` (the row that was picked). It includes everything `-printMachineTrace` shows. A run that hits the step limit prints 10000 step lines.
+
+```
+`-- go (ctm): halt after 3 steps  |  ~ [#]
+    |-- L  |  [~]
+    `-- M (tm): halt after 2 steps  |  ~ [#]
+        |-- ("s", ~) |-- ("s", ~, ->)  [default ~ rule]  |  ~ [#]
+        `-- ("s", #) |-- (halt, #, <>)  |  ~ [#]
 ```

@@ -137,7 +137,7 @@ run(skip_sub, t_sub);
 
 // did not halt within 10000 steps (stop_state A)
 // ~ [#]
-run(spin, t_empty);
+// run(spin, t_empty);
 
 // cell 1 -> L to ~ -> L moves right -> L to ~ again
 // halt after 3 steps

@@ -67,11 +67,14 @@ int main(int argc, char *argv[]) {
         if (arg == "-printMachineTrace") {
             options.print_machine_trace = true;
         }
+        else if (arg == "-printTransitionTrace") {
+            options.print_transition_trace = true;
+        }
         else if (arg[0] != '-' && script_path.empty()) {
             script_path = arg;
         }
         else {
-            std::cout << "Usage: tm [-printMachineTrace] [script]\n";
+            std::cout << "Usage: tm [-printMachineTrace] [-printTransitionTrace] [script]\n";
             return 64;
         }
     }

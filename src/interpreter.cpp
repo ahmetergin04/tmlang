@@ -3,6 +3,7 @@
 #include <iostream>
 
 #include "interpreter.h"
+#include "ast_printer.h"
 #include "tm_error.h"
 
 static constexpr int STEP_LIMIT = 10000;
@@ -70,13 +71,25 @@ void Interpreter::print_trace(const TraceNode& node, const std::string& prefix, 
     }
 }
 
+void Interpreter::record_transition(const std::string& description, const RunExec& exec) {
+    current_trace->children.push_back({description + "  |  " + format_tape(exec), {}});
+}
+
+std::string format_move(token_type move) {
+    switch (move) {
+        case RIGHT_ARROW: return "->";
+        case LEFT_ARROW:  return "<-";
+        default:          return "<>";
+    }
+}
+
 // every machine call (from run or from a ctm chain) goes through here so the trace sees it
 RunOutcome Interpreter::call_machine(const std::string& name, RunExec& exec) {
     bool is_ctm = env.ctms.count(name) > 0;
     auto run_machine = [&] {
         return is_ctm ? run_ctm(env.ctms.at(name), exec) : run_tm(env.machines.at(name), exec);
     };
-    if (!options.print_machine_trace) return run_machine();
+    if (!options.tracing()) return run_machine();
 
     // the parent's children only grow after this call returns, so this reference stays valid
     TraceNode& node = current_trace->children.emplace_back();
@@ -118,12 +131,13 @@ RunOutcome Interpreter::run_tm(const TMachine& tm, RunExec& exec) {
 
         // look for the current state + symbol combo in the tmms deltas
         TmAction a;
-        auto it = tm.deltas->find({state, exec.tape[exec.head]});
+        Symbol read_symbol = exec.tape[exec.head];
+        auto it = tm.deltas->find({state, read_symbol});
 
         if (it != tm.deltas->end()) {
             a = it->second; // succesful find
         }
-        else if (exec.tape[exec.head] == "~") {
+        else if (read_symbol == "~") {
             a = TmAction{state, "~", RIGHT_ARROW};   // default ~ rule
         }
         else {
@@ -136,6 +150,12 @@ RunOutcome Interpreter::run_tm(const TMachine& tm, RunExec& exec) {
         }
         else if (a.action == LEFT_ARROW) {
             --exec.head;   // never below 0: reading ~ always moves right
+        }
+
+        if (options.print_transition_trace) {
+            // written like a transition in the language: (state, symbol) |-- (next, write, move)
+            record_transition("(" + state + ", " + read_symbol + ") |-- (" + a.next + ", " + a.write + ", "
+                + format_move(a.action) + ")" + (it == tm.deltas->end() ? "  [default ~ rule]" : ""), exec);
         }
         state = a.next;
         ++exec.steps;
@@ -169,12 +189,18 @@ RunOutcome Interpreter::run_ctm(const Ctm& ctm, RunExec& exec) {
                 case CtmActionType::MOVE_RIGHT:
                     move_right(exec);
                     ++exec.steps;
+                    if (options.print_transition_trace) record_transition("R", exec);
                     break;
 
-                case CtmActionType::MOVE_LEFT:
+                case CtmActionType::MOVE_LEFT: {
+                    bool on_blip = exec.tape[exec.head] == "~";
                     move_left(exec);
                     ++exec.steps;
+                    if (options.print_transition_trace) {
+                        record_transition(on_blip ? "L  [on ~, moved right]" : "L", exec);
+                    }
                     break;
+                }
 
                 case CtmActionType::WRITE:
                     if (exec.tape[exec.head] == "~") {
@@ -182,6 +208,7 @@ RunOutcome Interpreter::run_ctm(const Ctm& ctm, RunExec& exec) {
                     }
                     exec.tape[exec.head] = action.name;
                     ++exec.steps;
+                    if (options.print_transition_trace) record_transition("write " + action.name, exec);
                     break;
 
                 case CtmActionType::CALL_TM:
@@ -205,6 +232,10 @@ RunOutcome Interpreter::run_ctm(const Ctm& ctm, RunExec& exec) {
         // the chain did not halt, so its last action is a GOTO (guaranteed by visit(Composite_tm&))
         const std::string& next_label = row->chain.back().name;
         row = pick_row(ctm, next_label, exec);
+        if (options.print_transition_trace) {
+            std::string chosen_row = row ? "row " + ast_printer().print(*row->condition) : "no row matches";
+            record_transition("goto " + next_label + ": " + chosen_row, exec);
+        }
         if (row == nullptr) {
             return {RunStatus::STUCK, next_label};   // no row of this label matches the head symbol
         }
@@ -436,7 +467,7 @@ void Interpreter::visit(Run& run) {
     current_trace = nullptr;
 
     print_result(run, outcome, exec);
-    if (options.print_machine_trace) {
+    if (options.tracing()) {
         print_trace(trace_root.children.front(), "", true);
     }
 }
